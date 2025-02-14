@@ -36,6 +36,7 @@ st_grid %>%
   geom_sf(color = "grey", fill = "transparent") +
   geom_sf(data = gila_emu %>%
             st_transform(crs = 4326) %>% st_crop(bb), fill = "transparent") #+
+#st_transform(crs = 4326), fill = "transparent") #+
   #coord_sf(datum = 9822)
 
 
