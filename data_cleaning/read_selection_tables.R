@@ -78,12 +78,12 @@ gila_occ <- purrr::map_dfr(gila_paths, process_gila_seltable)
 #### Saving out some data products ####
 # let's save the whole enchilada
 bind_rows(cibola_occ, kaibab_occ, gila_occ) %>%
-  write.csv(here::here("data/allspp_obs.csv"))
+  readr::write_csv(here::here("data/allspp_obs.csv"))
 
 # let's get a csv of all possible SPOW observations
 bind_rows(cibola_occ, kaibab_occ, gila_occ) %>%
   filter(species_code == "spoowl") %>%
-  write.csv(here::here("data/spow_obs.csv"))
+  readr::write_csv(here::here("data/spow_obs.csv"))
 
 
 ## Exploring with the original cutoffs Jamie got ####
@@ -114,4 +114,10 @@ kaibab_spow_occ <- kaibab_occ %>%
   filter(confidence >  0.60)
 
 write.csv(kaibab_spow_occ, here::here("data/kaibab_top_conf.csv"))
+
+# save out for all calls about 65% confidence
+all_occ %>%
+  filter(species_code == "spoowl") %>%
+  filter(confidence > 0.65) %>%
+  readr::write_csv(., here::here("data/top_conf_all.csv"))
 
