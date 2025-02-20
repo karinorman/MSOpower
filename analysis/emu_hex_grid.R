@@ -103,8 +103,15 @@ ggplot() +
   geom_spatvector(data = vect(emus_proj) %>% crop(bb), color = "grey", fill = "transparent") +
   geom_spatvector(data = vect(emu_grid_proj) %>% crop(bb), color = "white", fill = "transparent")
 
+
+# get grid level summaries of both percent tree cover and landcover type
 emu_grid_vect <- vect(emu_grid_proj)
+grid_treecover_zonal <- zonal(treecover, emu_grid_vect, fun = "mean", na.rm = TRUE, as.polygons = TRUE)
 
-grid_forest_cover_zonal <- zonal(treecover, emu_grid_vect, fun = "mean", na.rm = TRUE, as.polygons = TRUE)
-#grid_forest_cover <- extract(treecover, emu_grid_vect)
+landcover_type <- rast(here::here("data/LF2023_EVT_240_CONUS/Tif/LC23_EVT_240.tif")) %>%
+  crop(., emu_grid %>% st_transform(crs = 5070) %>% st_bbox) %>%
+  project("epsg:4326")
 
+grid_attr <- zonal(landcover_type, grid_treecover_zonal, fun = "modal", na.rm = TRUE, as.polygons = TRUE)
+
+writeVector(grid_attr, here::here("data/grid_attr.shp"))
