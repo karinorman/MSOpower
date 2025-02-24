@@ -80,14 +80,6 @@ if(!file.exists(here::here('data/gfc_treecover2000_study_area.tif'))){
 
   treecover <- mosaic(sprc(tile_list))
 
-  # treecover_tile1 <- rast(here::here("data/hanson_global_forest_change/Hansen_GFC-2023-v1.11_treecover2000_40N_120W.tif")) %>%
-  #   crop(., emus_bbox)
-  #
-  # treecover_tile2 <- rast(here::here("data/hanson_global_forest_change/Hansen_GFC-2023-v1.11_treecover2000_40N_110W.tif")) %>%
-  #   crop(., emus_bbox)
-  #
-  # treecover <- mosaic(treecover_tile1, treecover_tile2)
-
   writeRaster(treecover, here::here('data/gfc_treecover2000_study_area.tif'))
 
 } else{
@@ -108,10 +100,168 @@ ggplot() +
 emu_grid_vect <- vect(emu_grid_proj)
 grid_treecover_zonal <- zonal(treecover, emu_grid_vect, fun = "mean", na.rm = TRUE, as.polygons = TRUE)
 
+# read in data
 landcover_type <- rast(here::here("data/LF2023_EVT_240_CONUS/Tif/LC23_EVT_240.tif")) %>%
   crop(., emu_grid %>% st_transform(crs = 5070) %>% st_bbox) %>%
   project("epsg:4326")
 
-grid_attr <- zonal(landcover_type, grid_treecover_zonal, fun = "modal", na.rm = TRUE, as.polygons = TRUE)
+# get metadata for landcover types
+landcover_meta <- read.csv(here::here("data/LF2023_EVT_240_CONUS/CSV_Data/LF23_EVT_240.csv"))
 
-writeVector(grid_attr, here::here("data/grid_attr.shp"))
+# pull out landcover types and add back in a bunch of meta data, exclude some current landcover groups
+grid_attr <- zonal(landcover_type, grid_treecover_zonal, fun = "modal", na.rm = TRUE, as.polygons = TRUE) %>%
+  left_join(grid_attr %>% rename(LFRDB = EVT_NAME), landcover_meta) %>%
+  mutate(sample_frame = ifelse(EVT_LF == "Tree" | Hansen_GFC > 10, EVT_NAME, NA),
+         sample_frame_type = ifelse(EVT_LF == "Tree" | Hansen_GFC > 10, EVT_LF, NA)) %>%
+  mutate(across(starts_with("sample_frame"), ~replace(., sample_frame_type %in%  c("Agriculture", "Barren", "Developed", "Sparse", "Water", "Snow-Ice"), NA)))
+
+#writeVector(grid_attr, here::here("data/grid_attr.shp"))
+
+
+# Let's look at the living map stuff
+lm_2022 <- rast(here::here("data/MSO_SDM_SDM_2022.tif")) %>%
+  project("epsg:4326") %>%
+  crop(vect(emus_proj))
+
+lm_2000 <- rast(here::here("data/MSO_SDM_SDM_2000.tif")) %>%
+  project("epsg:4326") %>%
+  crop(vect(emus_proj))
+
+habitat_rast <- c(lm_2022 %>% rename(habitat_2022 = SDM), lm_2000 %>% rename(habitat_2000 = SDM))
+
+grid_attr_habitat <- zonal(habitat_rast, grid_attr, fun = "mean", na.rm = TRUE, as.polygons = TRUE)
+
+
+##### Find MSO habitat types #####
+
+grid_attr_habitat <- grid_attr_habitat %>%
+  #filter(sample_frame_type == "Tree") %>%
+  mutate(MSO_habitat = case_when(
+    sample_frame == "Madrean Pinyon-Juniper Woodland" ~ "no",
+    sample_frame == "Madrean Encinal" ~ "no",
+    sample_frame == "Interior West Ruderal Riparian Forest" ~ "no",
+    sample_frame == "Madrean Lower Montane Pine-Oak Forest and Woodland" ~ "yes",
+    sample_frame == "Western Warm Temperate Orchard" ~ "no",
+    sample_frame == "Southern Rocky Mountain Dry-Mesic Montane Mixed Conifer Forest and Woodland" ~ "yes",
+    sample_frame == "North American Warm Desert Riparian Woodland" ~ "no",
+    sample_frame == "North American Warm Desert Riparian Mesquite Bosque Woodland" ~ "no",
+    sample_frame == "Southern Rocky Mountain Ponderosa Pine Woodland" ~ "yes",
+    sample_frame == "Madrean Upper Montane Conifer-Oak Forest and Woodland" ~ "yes",
+    sample_frame == "North American Warm Desert Lower Montane Riparian Woodland" ~ "no",
+    sample_frame == "Madrean Juniper Savanna" ~ "no",
+    sample_frame == "Rocky Mountain Subalpine Dry-Mesic Spruce-Fir Forest and Woodland" ~ "yes",
+    sample_frame == "Colorado Plateau Pinyon-Juniper Woodland" ~ "no",
+    sample_frame == "Rocky Mountain Aspen Forest and Woodland" ~ "yes",
+    sample_frame == "Inter-Mountain Basins Aspen-Mixed Conifer Forest and Woodland" ~ "yes",
+    sample_frame == "Southern Rocky Mountain Juniper Woodland and Savanna" ~ "no",
+    sample_frame == "Southern Rocky Mountain Ponderosa Pine Savanna" ~ "yes",
+    sample_frame == "Inter-Mountain Basins Subalpine Limber-Bristlecone Pine Woodland" ~ "yes",
+    sample_frame == "Inter-Mountain Basins Curl-leaf Mountain Mahogany Woodland" ~ "no",
+    sample_frame == "Rocky Mountain Bigtooth Maple Ravine Woodland" ~ "yes",
+    sample_frame == "Rocky Mountain Subalpine Mesic-Wet Spruce-Fir Forest and Woodland" ~ "yes",
+    sample_frame == "Rocky Mountain Subalpine-Montane Riparian Woodland" ~ "yes",
+    sample_frame == "Western Cool Temperate Urban Evergreen Forest" ~ "no",
+    sample_frame == "Rocky Mountain Lodgepole Pine Forest" ~ "yes",
+    sample_frame == "Rocky Mountain Subalpine-Montane Limber-Bristlecone Pine Woodland" ~ "yes",
+    sample_frame == "Western Cool Temperate Orchard" ~ "no",
+    sample_frame == "Rocky Mountain Lodgepole Pine Forest" ~ "yes",
+    sample_frame == "Rocky Mountain Subalpine-Montane Limber-Bristlecone Pine Woodland" ~ "yes",
+    sample_frame == "Western Cool Temperate Orchard" ~ "no",
+    sample_frame == "Rocky Mountain Foothill Limber Pine-Juniper Woodland" ~ "no",
+    sample_frame == "Rocky Mountain Lower Montane-Foothill Riparian Woodland" ~ "no",
+    sample_frame == "Western Great Plains Riparian Woodland" ~ "no",
+    sample_frame == "Southern Rocky Mountain Mesic Montane Mixed Conifer Forest and Woodland" ~ "yes",
+    sample_frame == "Great Basin Pinyon-Juniper Woodland" ~ "no",
+    sample_frame == "Southern Rocky Mountain Pinyon-Juniper Woodland" ~ "no",
+    .default = NA
+  ))
+
+writeVector(grid_attr_habitat, here::here("data/grid_attr_habitat.shp"))
+
+#### Plot predicted MSO habitat against forested areas ####
+
+habitat_2000_map <- ggplot() +
+  geom_spatvector(data = emus_proj, color = "black", fill = "transparent") +
+  geom_spatvector(data = grid_attr_habitat %>%
+                    filter(!is.na(sample_frame_type)),
+                  aes(color = sample_frame_type, fill = sample_frame_type)) +
+  geom_spatvector(data = grid_attr_habitat %>% filter(habitat_2000 > 4000),
+                  color = "red", fill = "red", alpha = 0.5) +
+  scale_fill_discrete(na.value = "transparent") +
+  theme_void()# +
+#theme(legend.position = "none")
+ggsave("figures/habitat_2000.jpeg", habitat_2000_map)
+
+
+habitat_2022_map <-  ggplot() +
+  geom_spatvector(data = emus_proj, color = "black", fill = "transparent") +
+  geom_spatvector(data = grid_attr_habitat %>%
+                    filter(!is.na(sample_frame_type)),
+                  aes(color = sample_frame_type, fill = sample_frame_type)) +
+  geom_spatvector(data = grid_attr_habitat %>% filter(habitat_2022 > 4000),
+                  color = "red", fill = "red", alpha = 0.5) +
+  scale_fill_discrete(na.value = "transparent") +
+  theme_void()# +
+#theme(legend.position = "none")
+ggsave("figures/habitat_2022.jpeg", habitat_2022_map)
+
+### limit the study frame to the types of forest MSO could concievably be in
+ggplot() +
+  geom_spatvector(data = emus_proj, color = "black", fill = "transparent") +
+  geom_spatvector(data = grid_attr_habitat %>%
+                    filter(MSO_habitat == "yes"), color = 'grey') +
+  geom_spatvector(data = grid_attr_habitat %>% filter(habitat_2000 > 4000),
+                  color = "red", fill = "red", alpha = 0.5) +
+  scale_fill_discrete(na.value = "transparent") +
+  theme_void()# +
+
+###############################################
+### Let's figure out the area of each patch ###
+###############################################
+
+# sample_polys <- grid_attr_habitat %>% filter(!is.na(sample_frame)) %>% mutate(sample_area = 1, sample_area = 2) %>%
+#   select(sample_area) %>%
+#   aggregate() %>%
+#   mutate(sample_area = 1)
+#   #expanse()
+
+# Get the grid cells in the sample frame that are adjacent
+adj_grids <- grid_attr_habitat %>% filter(!is.na(sample_frame)) %>%
+  adjacent()
+
+adj_grids_gila <- grid_attr_habitat %>%
+  filter(!is.na(sample_frame), UNIT == "Upper Gila Mountains") %>%
+  adjacent(type = "rook")
+
+gila_ids <-  grid_attr_habitat %>%
+  filter(!is.na(sample_frame), UNIT == "Upper Gila Mountains") %>%
+  select(ID) %>%
+  mutate(adj_id = row_number())
+
+sym_mat <- adj_grids_gila %>%
+  as.data.frame() %>%
+  # fill in the missing index so we don't have suprious adjacencies in the matrix
+  tidyr::complete(from = 1:11431) %>%
+  tidyr::complete(to = 1:11431) %>%
+  mutate(ind_value = 1) %>%
+  arrange(from) %>%
+  pivot_wider(names_from = to, values_from = ind_value, values_fill = 0) %>%
+  select(-from)
+
+id_names <- as.integer(colnames(sym_mat)) %>% sort() %>% as.character()
+sym_mat <- sym_mat[, id_names]
+
+
+sym_rast <- raster::raster(as.matrix(sym_mat))
+clumps <- raster::clump(sym_rast, directions = 4)
+clump_mat <- as.matrix(clumps)
+tot <- max(clump_mat, na.rm = TRUE)
+
+
+# Get count of number of cells in each adjacency group, get area of aggregated polygons
+
+
+
+
+
+
