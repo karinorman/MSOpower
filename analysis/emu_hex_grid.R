@@ -226,37 +226,63 @@ ggplot() +
 #   #expanse()
 
 # Get the grid cells in the sample frame that are adjacent
-adj_grids <- grid_attr_habitat %>% filter(!is.na(sample_frame)) %>%
-  adjacent()
-
-adj_grids_gila <- grid_attr_habitat %>%
-  filter(!is.na(sample_frame), UNIT == "Upper Gila Mountains") %>%
+adj_grids <- grid_attr_habitat %>%
+  filter(MSO_habitat == "yes") %>%
   adjacent(type = "rook")
 
-gila_ids <-  grid_attr_habitat %>%
-  filter(!is.na(sample_frame), UNIT == "Upper Gila Mountains") %>%
+adj_grids_emu <- grid_attr_habitat %>%
+  filter(MSO_habitat == "yes", UNIT == "Basin & Range - West") %>%
+  adjacent(type = "rook", symmetrical = TRUE)
+
+emu_ids <-  grid_attr_habitat %>%
+  as.data.frame() %>%
+  filter(!is.na(sample_frame), UNIT == "Basin & Range - West") %>%
   select(ID) %>%
   mutate(adj_id = row_number())
 
-sym_mat <- adj_grids_gila %>%
+sym_mat <- adj_grids_emu %>%
   as.data.frame() %>%
-  # fill in the missing index so we don't have suprious adjacencies in the matrix
-  tidyr::complete(from = 1:11431) %>%
-  tidyr::complete(to = 1:11431) %>%
   mutate(ind_value = 1) %>%
+  # fill in the missing index so we don't have suprious adjacencies in the matrix
+  tidyr::complete(to = 1:dim(emu_ids)[1]) %>%
   arrange(from) %>%
   pivot_wider(names_from = to, values_from = ind_value, values_fill = 0) %>%
+  tidyr::complete(from = 1:dim(emu_ids)[1])  %>%
+  filter(!is.na(from)) %>%
   select(-from)
 
 id_names <- as.integer(colnames(sym_mat)) %>% sort() %>% as.character()
 sym_mat <- sym_mat[, id_names]
 
-
+# adjacency matrix to raster, find clumps
 sym_rast <- raster::raster(as.matrix(sym_mat))
 clumps <- raster::clump(sym_rast, directions = 4)
-clump_mat <- as.matrix(clumps)
-tot <- max(clump_mat, na.rm = TRUE)
 
+# back to data frame, add ID's back in, find the clump id for each grid hex
+clump_df <- as.data.frame(as.matrix(clumps))
+colnames(clump_df) <- id_names
+clump_df <- clump_df %>%
+  janitor::remove_empty(which = "cols") %>%
+  mutate(adj_id = as.integer(id_names)) %>%
+  rowwise() %>%
+  # there's only one clump ID per grid cell, so we can use max to get that unique value (unique() doesn't drop na's)
+  mutate(clump_id = max(c_across(-adj_id), na.rm = TRUE)) %>%
+  select(adj_id, clump_id) %>%
+  filter(!is.infinite(clump_id)) %>%
+  left_join(emu_ids, by = "adj_id")
+
+
+
+
+
+
+clump_ids <- unique(as.vector(clump_mat), na.rm = TRUE)
+
+tot <- max(clump_mat, na.rm = TRUE)
+res <- vector("list", tot)
+for (i in 1:tot){
+  res[i] <- list(which(clump_mat == i, arr.ind = TRUE))
+}
 
 # Get count of number of cells in each adjacency group, get area of aggregated polygons
 
