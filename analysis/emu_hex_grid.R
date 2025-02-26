@@ -315,6 +315,7 @@ ggplot() +
 
 grid_sample_frame %>%
   as.data.frame() %>%
+  filter(include_patch == "yes") %>%
   group_by(UNIT, veg_type_landfire) %>%
   summarize(hex_num = n_distinct(ID)) %>%
   readr::write_csv(here::here("data/EMU_veg_types.csv"))
