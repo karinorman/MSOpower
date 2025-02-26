@@ -130,6 +130,9 @@ habitat_rast <- c(lm_2022 %>% rename(habitat_2022 = SDM), lm_2000 %>% rename(hab
 
 grid_attr_habitat <- zonal(habitat_rast, grid_attr, fun = "mean", na.rm = TRUE, as.polygons = TRUE)
 
+# let's get values within grid so we can be a little more precise with what we want than simply mean
+mso_poly_values <- extract(habitat_rast, grid_attr, fun = table)
+
 #####################################################
 ### Which hexes are included in our sample frame ####
 #####################################################
