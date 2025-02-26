@@ -131,8 +131,30 @@ habitat_rast <- c(lm_2022 %>% rename(habitat_2022 = SDM), lm_2000 %>% rename(hab
 grid_attr_habitat <- zonal(habitat_rast, grid_attr, fun = "mean", na.rm = TRUE, as.polygons = TRUE)
 
 # let's get values within grid so we can be a little more precise with what we want than simply mean
-mso_poly_values <- extract(habitat_rast, grid_attr, fun = table)
+mso_poly_values <- extract(round(lm_2022), grid_attr, fun = table)
+poly_ids <- grid_attr %>% pull(ID)
 
+write.csv(mso_poly_values, here::here("data/mso_poly_values.csv"))
+
+total_cells <- mso_poly_values %>%
+  select(-ID) %>%
+  rowSums(na.rm = TRUE) %>%
+  data.frame(poly_id = poly_ids, extract_ID = mso_poly_values$ID, total_cell = .)
+
+# get percent of each polygon above .5 cut off
+threshold_count <- mso_poly_values %>%
+  pivot_longer(-ID, names_to = "mso_value") %>%
+  mutate(mso_value = as.numeric(mso_value)) %>%
+  filter(mso_value >= 5000) %>%
+  group_by(ID) %>%
+  summarize(threshold_cells = sum(value)) %>%
+  left_join(total_cells, by = c("ID" = "extract_ID")) %>%
+  rename(extract_ID = ID) %>%
+  mutate(percent = threshold_cells/total_cell) %>%
+  filter(percent > 0.1)
+
+grid_attr_habitat <- grid_attr_habitat %>%
+  mutate(mso_percent_habitat = ifelse(ID %in% threshold_count$poly_id, 1, NA))
 #####################################################
 ### Which hexes are included in our sample frame ####
 #####################################################
@@ -141,9 +163,9 @@ grid_attr_habitat <- grid_attr_habitat %>%
   # initial pass, create two variables that give veg type and veg group if the grid is in the sample frame
    mutate(sample_frame_veg = ifelse(EVT_LF == "Tree" | Hansen_GFC > 10, EVT_NAME, NA),
           sample_frame_type = ifelse(EVT_LF == "Tree" | Hansen_GFC > 10, EVT_LF, NA)) %>%
-   mutate(across(starts_with("sample_frame"), ~replace(., sample_frame_type %in%  c("Agriculture", "Barren", "Developed", "Sparse", "Water", "Snow-Ice"), NA)))
+   mutate(across(starts_with("sample_frame"), ~replace(., sample_frame_type %in%  c("Agriculture", "Barren", "Developed", "Sparse", "Water", "Snow-Ice"), NA))) %>%
   # Identify tree veg types, and whether or not they're included in the sample frame
-  mutate(MSO_habitat = case_when(
+  mutate(mso_habitat_type = case_when(
     sample_frame_veg == "Madrean Pinyon-Juniper Woodland" ~ "no",
     sample_frame_veg == "Madrean Encinal" ~ "no",
     sample_frame_veg == "Interior West Ruderal Riparian Forest" ~ "no",
@@ -216,7 +238,7 @@ ggsave("figures/habitat_2022.jpeg", habitat_2022_map)
 ggplot() +
   geom_spatvector(data = emus_proj, color = "black", fill = "transparent") +
   geom_spatvector(data = grid_attr_habitat %>%
-                    filter(MSO_habitat == "yes"), color = 'grey') +
+                    filter(mso_habitat_type == "yes"), color = 'grey') +
   geom_spatvector(data = grid_attr_habitat %>% filter(habitat_2000 > 4000),
                   color = "red", fill = "red", alpha = 0.5) +
   scale_fill_discrete(na.value = "transparent") +
@@ -227,7 +249,7 @@ ggplot() +
 ###############################################
 
 sample_grids <- grid_attr_habitat %>%
-  filter(MSO_habitat == "yes")
+  filter(mso_habitat_type == "yes")
 
 sample_polys <- sample_grids %>%
   select(ID) %>%
@@ -255,7 +277,7 @@ small_patch <- sample_poly_area %>%
 # final sample frame,
 grid_sample_frame <- sample_grids %>%
   mutate(include_patch = as.factor(ifelse(ID %in% small_patch$grid_id, "no", "yes"))) %>%
-  select(ID, UNIT, veg_type_landfire = sample_frame, habitat_2000, habitat_2022, MSO_habitat, include_patch)
+  select(ID, UNIT, veg_type_landfire = sample_frame, habitat_2000, habitat_2022, mso_habitat_type, mso_percent_habitat, include_patch)
 
 writeVector(grid_sample_frame, here::here("data/grid_sample_frame.shp"))
 
@@ -267,7 +289,7 @@ ggplot() +
   geom_spatvector(data = grid_sample_frame, aes(fill = include_patch, color = include_patch)) +
   scale_fill_manual(values = pal) +
   scale_color_manual(values = pal) +
-  geom_spatvector(data = grid_attr_habitat %>% filter(habitat_2022 > 4000),
+  geom_spatvector(data = grid_attr_habitat %>% filter(mso_percent_habitat == 1),
                   color = "#BC4749", fill = "#BC4749", alpha = 0.5) +
   #scale_fill_discrete(na.value = "transparent") +
   theme_void()# +
@@ -281,7 +303,18 @@ ggplot() +
   scale_fill_manual(values = pal) +
   scale_color_manual(values = pal) +
   #geom_spatvector(data = grid_sample_frame %>% filter(include_patch == "yes") %>% crop(gila_emu), fill = "#82A6B1", color =  "#82A6B1") +
-  geom_spatvector(data = grid_attr_habitat %>% filter(habitat_2022 > 4000) %>% crop(gila_emu),
+  geom_spatvector(data = grid_attr_habitat %>% filter(mso_percent_habitat == 1) %>% crop(gila_emu),
                   color = "#BC4749", fill = "#BC4749", alpha = 0.5) +
   #scale_fill_discrete(na.value = "transparent") +
   theme_void()
+
+
+##################################################
+########### Count of veg types by EMU ############
+##################################################
+
+grid_sample_frame %>%
+  as.data.frame() %>%
+  group_by(UNIT, veg_type_landfire) %>%
+  summarize(hex_num = n_distinct(ID)) %>%
+  readr::write_csv(here::here("data/EMU_veg_types.csv"))
