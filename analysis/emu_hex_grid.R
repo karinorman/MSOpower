@@ -21,7 +21,7 @@ st_grid <- st_make_grid(emus, cellsize =  2150, square = FALSE) %>%
   st_as_sf() %>%
   mutate(ID = row_number())
 
-# this  doesn't give full grids cells on the edges, but it does assign emu lables to grid cells
+# this  doesn't give full grids cells on the edges, but it does assign emu labels to grid cells
 grid_labels <-  st_grid %>% st_intersection(., emus)
 # this one does!
 emu_grid <- st_grid[emus,] %>%
@@ -274,10 +274,36 @@ small_patch <- sample_poly_area %>%
   filter(n < 5) %>%
   left_join(sample_poly_area)
 
+###############################################
+########## Create final sample frame ##########
+###############################################
+
 # final sample frame,
 grid_sample_frame <- sample_grids %>%
   mutate(include_patch = as.factor(ifelse(ID %in% small_patch$grid_id, "no", "yes"))) %>%
   select(ID, UNIT, veg_type_landfire = sample_frame, habitat_2000, habitat_2022, mso_habitat_type, mso_percent_habitat, include_patch)
+
+# need to assign hexes that match to more than one EMU to the dominant EMU
+overlap_geom <- grid_sample_frame %>%
+  select(ID, UNIT) %>%
+  group_by(ID) %>%
+  filter(n() > 1) %>%
+  select(-UNIT) %>%
+  distinct() %>%
+  ungroup() %>%
+  terra::intersect(vect(emus_proj))
+
+overlap_area <- as.data.frame(overlap_geom) %>% bind_cols(area = expanse(overlap_geom))
+hex_UNIT_assign <- overlap_area %>% slice_max(order_by = area, by = ID)
+
+grid_match_resolve <- grid_sample_frame %>%
+  right_join(hex_UNIT_assign %>%
+               select(-area))
+
+grid_sample_frame <- grid_sample_frame %>%
+  filter(!ID %in% grid_match_resolve$ID) %>%
+  list(., grid_match_resolve) %>%
+  vect()
 
 writeVector(grid_sample_frame, here::here("data/grid_sample_frame.shp"))
 
