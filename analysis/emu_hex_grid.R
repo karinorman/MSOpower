@@ -209,40 +209,40 @@ writeVector(grid_attr_habitat, here::here("data/grid_attr_habitat.shp"))
 
 #### Plot predicted MSO habitat against forested areas ####
 
-habitat_2000_map <- ggplot() +
-  geom_spatvector(data = emus_proj, color = "black", fill = "transparent") +
-  geom_spatvector(data = grid_attr_habitat %>%
-                    filter(!is.na(sample_frame_type)),
-                  aes(color = sample_frame_type, fill = sample_frame_type)) +
-  geom_spatvector(data = grid_attr_habitat %>% filter(habitat_2000 > 4000),
-                  color = "red", fill = "red", alpha = 0.5) +
-  scale_fill_discrete(na.value = "transparent") +
-  theme_void()# +
-#theme(legend.position = "none")
-ggsave("figures/habitat_2000.jpeg", habitat_2000_map)
-
-
-habitat_2022_map <-  ggplot() +
-  geom_spatvector(data = emus_proj, color = "black", fill = "transparent") +
-  geom_spatvector(data = grid_attr_habitat %>%
-                    filter(!is.na(sample_frame_type)),
-                  aes(color = sample_frame_type, fill = sample_frame_type)) +
-  geom_spatvector(data = grid_attr_habitat %>% filter(habitat_2022 > 4000),
-                  color = "red", fill = "red", alpha = 0.5) +
-  scale_fill_discrete(na.value = "transparent") +
-  theme_void()# +
-#theme(legend.position = "none")
-ggsave("figures/habitat_2022.jpeg", habitat_2022_map)
-
-### limit the study frame to the types of forest MSO could concievably be in
-ggplot() +
-  geom_spatvector(data = emus_proj, color = "black", fill = "transparent") +
-  geom_spatvector(data = grid_attr_habitat %>%
-                    filter(mso_habitat_type == "yes"), color = 'grey') +
-  geom_spatvector(data = grid_attr_habitat %>% filter(habitat_2000 > 4000),
-                  color = "red", fill = "red", alpha = 0.5) +
-  scale_fill_discrete(na.value = "transparent") +
-  theme_void()# +
+# habitat_2000_map <- ggplot() +
+#   geom_spatvector(data = emus_proj, color = "black", fill = "transparent") +
+#   geom_spatvector(data = grid_attr_habitat %>%
+#                     filter(!is.na(sample_frame_type)),
+#                   aes(color = sample_frame_type, fill = sample_frame_type)) +
+#   geom_spatvector(data = grid_attr_habitat %>% filter(habitat_2000 > 4000),
+#                   color = "red", fill = "red", alpha = 0.5) +
+#   scale_fill_discrete(na.value = "transparent") +
+#   theme_void()# +
+# #theme(legend.position = "none")
+# ggsave("figures/habitat_2000.jpeg", habitat_2000_map)
+#
+#
+# habitat_2022_map <-  ggplot() +
+#   geom_spatvector(data = emus_proj, color = "black", fill = "transparent") +
+#   geom_spatvector(data = grid_attr_habitat %>%
+#                     filter(!is.na(sample_frame_type)),
+#                   aes(color = sample_frame_type, fill = sample_frame_type)) +
+#   geom_spatvector(data = grid_attr_habitat %>% filter(habitat_2022 > 4000),
+#                   color = "red", fill = "red", alpha = 0.5) +
+#   scale_fill_discrete(na.value = "transparent") +
+#   theme_void()# +
+# #theme(legend.position = "none")
+# ggsave("figures/habitat_2022.jpeg", habitat_2022_map)
+#
+# ### limit the study frame to the types of forest MSO could concievably be in
+# ggplot() +
+#   geom_spatvector(data = emus_proj, color = "black", fill = "transparent") +
+#   geom_spatvector(data = grid_attr_habitat %>%
+#                     filter(mso_habitat_type == "yes"), color = 'grey') +
+#   geom_spatvector(data = grid_attr_habitat %>% filter(habitat_2000 > 4000),
+#                   color = "red", fill = "red", alpha = 0.5) +
+#   scale_fill_discrete(na.value = "transparent") +
+#   theme_void()# +
 
 ###############################################
 ### Let's figure out the area of each patch ###
@@ -307,41 +307,74 @@ grid_sample_frame <- grid_sample_frame %>%
 
 writeVector(grid_sample_frame, here::here("data/grid_sample_frame.shp"))
 
-### let's look at stuff ###
-# map with smaller patches
-pal <- list("yes" = "#82A6B1", "no" = "#2F394D")
-ggplot() +
-  geom_spatvector(data = emus_proj, color = "black", fill = "transparent") +
-  geom_spatvector(data = grid_sample_frame, aes(fill = include_patch, color = include_patch)) +
-  scale_fill_manual(values = pal) +
-  scale_color_manual(values = pal) +
-  geom_spatvector(data = grid_attr_habitat %>% filter(mso_percent_habitat == 1),
-                  color = "#BC4749", fill = "#BC4749", alpha = 0.5) +
-  #scale_fill_discrete(na.value = "transparent") +
-  theme_void()# +
-
-# map with only included patches
-gila_emu <- emus_proj %>% filter(UNIT == "Upper Gila Mountains")
-
-ggplot() +
-  geom_spatvector(data = gila_emu, color = "black", fill = "transparent") +
-  geom_spatvector(data = grid_sample_frame %>% crop(gila_emu), aes(fill = include_patch, color = include_patch)) +
-  scale_fill_manual(values = pal) +
-  scale_color_manual(values = pal) +
-  #geom_spatvector(data = grid_sample_frame %>% filter(include_patch == "yes") %>% crop(gila_emu), fill = "#82A6B1", color =  "#82A6B1") +
-  geom_spatvector(data = grid_attr_habitat %>% filter(mso_percent_habitat == 1) %>% crop(gila_emu),
-                  color = "#BC4749", fill = "#BC4749", alpha = 0.5) +
-  #scale_fill_discrete(na.value = "transparent") +
-  theme_void()
-
-
 ##################################################
 ########### Count of veg types by EMU ############
 ##################################################
 
+# save out veg types for power analysis
 grid_sample_frame %>%
   as.data.frame() %>%
   filter(include_patch == "yes") %>%
   group_by(UNIT, veg_type_landfire) %>%
   summarize(hex_num = n_distinct(ID)) %>%
   readr::write_csv(here::here("data/EMU_veg_types.csv"))
+
+###############################
+########### Plots! ############
+###############################
+
+# if we have to read in again, names are messed up
+grid_attr_habitat <- vect(here::here("data/grid_attr_habitat.shp"))
+names(grid_attr_habitat)[23:29] <- c("sample_frame_veg", "sample_frame_type",  "habitat_2000", "habitat_2022", "mso_habitat_type", "mso_percent_habitat")
+
+grid_sample_frame <- vect(here::here("data/grid_sample_frame.shp"))
+names(grid_sample_frame) <- c("ID", "UNIT", "veg_type_landfire", "habitat_2000", "habitat_2022", "mso_habitat_type", "mso_percent_habitat", "include_patch")
+
+pal <- list("yes" = "#82A6B1", "no" = "#2F394D")
+
+# sample frame
+sampframe_plt <- ggplot() +
+  geom_spatvector(data = emus_proj, color = "black", fill = "transparent") +
+  geom_spatvector(data = grid_sample_frame, aes(fill = include_patch, color = include_patch)) +
+  scale_fill_manual(values = pal) +
+  scale_color_manual(values = pal) +
+  theme_void()
+
+ggsave(here::here("figures/sampframe.jpeg"), sampframe_plt)
+
+# sample frame with living map prediction on top
+sampframe_livingmap_plt <- ggplot() +
+  geom_spatvector(data = emus_proj, color = "black", fill = "transparent") +
+  geom_spatvector(data = grid_sample_frame, aes(fill = include_patch, color = include_patch)) +
+  scale_fill_manual(values = pal) +
+  scale_color_manual(values = pal) +
+  geom_spatvector(data = grid_attr_habitat %>% filter(mso_percent_habitat == 1),
+                  color = "#BC4749", fill = "#BC4749", alpha = 0.5) +
+  theme_void()
+
+ggsave(here::here("figures/sampframe_livingmap.jpeg"), sampframe_livingmap_plt)
+
+gila_emu <- emus_proj %>% filter(UNIT %in% c("Upper Gila Mountains", "Basin & Range - West"))
+
+emu_zoom_plt <- ggplot() +
+  geom_spatvector(data = gila_emu, color = "black", fill = "transparent") +
+  geom_spatvector(data = grid_sample_frame %>% filter(UNIT %in% c("Upper Gila Mountains", "Basin & Range - West")), aes(fill = include_patch, color = include_patch)) +
+  scale_fill_manual(values = pal) +
+  scale_color_manual(values = pal) +
+  #geom_spatvector(data = grid_sample_frame %>% filter(include_patch == "yes") %>% crop(gila_emu), fill = "#82A6B1", color =  "#82A6B1") +
+  geom_spatvector(data = grid_attr_habitat %>% filter(mso_percent_habitat == 1, UNIT %in% c("Upper Gila Mountains", "Basin & Range - West")),
+                  color = "#BC4749", fill = "#BC4749", alpha = 0.5) +
+  #scale_fill_discrete(na.value = "transparent") +
+  theme_void()
+
+ggsave(here::here("figures/emu_zoom.jpeg"), emu_zoom_plt)
+
+# need to get emu_veg from the sim script for this
+# occupancy_plt <- ggplot() +
+#   geom_spatvector(data = emus_proj, color = "black", fill = "transparent") +
+#   geom_spatvector(data = veg_grid %>% filter(include_patch == "yes"), aes(fill = occupancy, color = occupancy)) +
+#   scale_fill_manual(values = list("high" = "#F6AE2D", "low" = "#82A6B1")) +
+#   scale_color_manual(values = list("high" = "#F6AE2D", "low" = "#82A6B1")) +
+#   theme_void()
+#
+# ggsave(here::here("figures/occupancy_map.jpeg"), occupancy_plt)
