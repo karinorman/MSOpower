@@ -14,7 +14,7 @@ sd.phi = 0.04 # also 0.01 in Woods 2019
 perc_red = 0.25 # 25% decline in occupancy
 
 # derive from psi1 = gamma/(gamma + epsilon); occupancy at equilibrium
-gamma1 = (psi1 * epsilon1)/(1-psi1)
+gamma1 = (unlist(psi1) * epsilon1)/(1-unlist(psi1))
 sd.gamma = 0.01 # woods 2019
 
 # defining categorical variable impacting psi
@@ -52,7 +52,12 @@ cat_var <-purrr::imap(psi_cat_var, ~rep(.y, .x)) %>% unlist() %>% unname()
 ### year effects on colonization without trend
 logit.r.mean <- qlogis(gamma1)
 year.effect.r <- rnorm((nyear-1), 0, sd.gamma)
-r_year <- plogis(logit.r.mean + year.effect.r)
+
+for(i in 1:n_sites){
+  r_year <- ifelse(cat_var[i] == "low", plogis(logit.r.mean["low"] + year.effect.r), plogis(logit.r.mean["high"] + year.effect.r))
+}
+
+#r_year <- plogis(logit.r.mean + year.effect.r)
 
 ### year effects on survival without trend
 # logit.phi.mean <- qlogis(phi)
@@ -107,61 +112,8 @@ for(i in 1:n_sites) {
   }
 }
 
-# ### Then simulate the impact of the experimental treatment on local survival
-# ### in the Treatment subset of matrices tocc and obsocc using a staggered
-# ### treatment; equal number of sites treated per year; last year does not
-# ### receive a treatment
-# site_T_year = round(site_T/(nyear-2))
-# ### loop through the sites for first treatment year
-# for(i in 1:site_T_year) {
-#   for(tt in 2:nyear) {
-#     if (tocc[i,tt-1] == 1) {
-#       tocc[i,tt] <- rbinom(1,1,(phi_year[tt-1]*(1-phi_T)))
-#     } else {
-#         tocc[i,tt] <- rbinom(1,1,r_year[tt-1])
-#     }
-#     for(j in 1:n_vis) {
-#       obsocc[i,((tt-1)*n_vis)+j] <- rbinom(1,1,tocc[i,tt]*p)
-#     }
-#   }
-# }
-# ### apply the treatments for sites for subsequent years (no treatment applied
-# ### in last year)
-# for(k in 1:(nyear-3)) {
-#   for(i in (k*site_T_year+1):((k + 1)*site_T_year)) {
-#     for(tt in (k + 2):nyear) { if (tocc[i,tt-1] == 1) {
-#       tocc[i,tt]<-rbinom(1,1,(phi_year[tt-1]*(1-phi_T)))
-#     } else {
-#         tocc[i,tt] <- rbinom(1,1,r_year[tt-1])
-#     } for(j in 1:n_vis) {
-#         obsocc[i,((tt-1)*n_vis)+j] <- rbinom(1,1,tocc[i,tt]*p)
-#     }
-#     }
-#   }
-# }
-#
-# ### Add a column to observed data for site type (treated or non-treated)
-# obsocc$Treat = factor(c(rep('Treat', site_T_year*(nyear-2)), rep('Control', n_sites-site_T_year*(nyear-2))))
-
-### Create the matrix of yearly site covariates containing Year as factor
-### IMPORTANT ###: Occupancy at t = 1 is psi1, so there are (nSeason–1)
-### transitions between seasons for modeling colonization and extinction
-### The function colext (Fiske and Chandler, 2011) requires the full set of
-### parameters (nyear), but the last column of the matrix is unnecessary
-### for modeling colonization and extinction. Therefore we fill the last
-### column (i.e., last year) with the attribute ‘Null’.
-
-years <- matrix(rep(seq(1:(nyear-1)), n_sites), ncol = nyear-1, byrow = T,
-                 dimnames = list(paste("site", 1:n_sites, sep=""), paste("Yr", rep(1:(nyear-1)), sep="")))
-yrs.Null <- matrix(rep("Null", n_sites*1), ncol = 1)
-years <- cbind(years,yrs.Null)
-colnames(years) <- paste("Yr", rep(1:nyear), sep="")
-years <- as.data.frame(years)
-years <- data.frame(lapply(years, as.factor))
-
-
-### Combine the observed P/A data, the yearly covariates
-obsocc1 <- cbind(obsocc, years)
+### Output all the randomly generated pieces separately
+out_list <- list(true_occ = tocc, obs_occ = obsocc, phi_survival = year.effect.phi, gamma_colonization = r_year, cat_var = cat_var)
 
 
 
