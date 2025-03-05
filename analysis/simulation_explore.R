@@ -1,3 +1,4 @@
+library(dplyr)
 library(spOccupancy)
 
 ### Fixed Parameters ###
@@ -29,6 +30,10 @@ emu_veg <- read.csv(here::here("data/EMU_veg_types.csv")) %>%
     .default = NA
   ))
 
+emu_ratio <- emu_veg %>%
+  group_by(UNIT, occupancy) %>%
+  summarize(hex_count = sum(hex_num))
+
 ### Parameters ###
 psi1 = 0.43 #initial occupancy, from Wood 2019
 p = c(0.4, 0.8) #detection probability, from Wood 2019
@@ -50,7 +55,50 @@ n_recorders
 # single time period, for the whole grid
 gen_dim = ceiling(sqrt(n_pot_tot))
 test_data <- simOcc(J.x = gen_dim, J.y = gen_dim,
-          n.rep = rep(2, gen_dim*gen_dim), beta = c(psi1, 0.2), alpha = c(p[1], 0.2))
+          n.rep = rep(2, gen_dim*gen_dim),
+          # categorical variable controlling occupancy, so intercept is lower reference category
+          # and slope is reference category + amount to bring up to high occupancy
+          beta = c(psi1 - 0.2, psi1),
+          # intercept with no covariates
+          alpha = c(p[1], 0))
+
+# Detection-nondetection data
+y <- test_data$y
+# Occurrence design matrix for fixed effects
+X <- test_data$X
+# Detection design matrix for fixed effets
+X.p <- test_data$X.p
+# Occurrence values
+psi <- test_data$psi
+# Spatial coordinates
+coords <- test_data$coords
+
+# Package all data into a list
+# Occurrence covariates consists of the fixed effects and random effect
+occ.covs <- as.matrix(X[, 2])
+colnames(occ.covs) <- c('occ.cov.1')
+
+# Detection covariates consists of the fixed effects and random effect
+det.covs <- list(det.cov.1 = X.p[, , 2])
+                 #det.factor.1 = X.p.re[, , 1])
+# Package into a list for spOccupancy
+data.list <- list(y = y,
+                  occ.covs = occ.covs,
+                  det.covs = det.covs,
+                  coords = coords)
+
+inits <- list(alpha = 0, beta = 0, sigma.sq.psi = 0.5,
+              sigma.sq.p = 0.5, z = apply(test_data$y, 1, max, na.rm = TRUE),
+              sigma.sq = 1, phi = 3 / 0.5)
+out.full <- PGOcc(occ.formula = ~ occ.cov.1,
+                    det.formula = ~ det.cov.1,
+                    data = data.list,
+                    inits = inits,
+                    n.samples = 5000,
+                    n.report = 100,
+                    n.burn = 1000,
+                    n.chains = 1)
+
 
 # add trend
 trend_data <- simTIntOcc()
