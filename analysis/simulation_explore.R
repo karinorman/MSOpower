@@ -95,3 +95,13 @@ sim_scenarios_emu <- bind_rows(sim_scenarios %>% mutate(emu = "BRE"),
 ###########################################
 
 single_rep <- purrr::pmap(sim_scenarios_emu[1,] %>% select(-sim_id, -emu), sim_dataset, nyear = nyear, n_vis = 2)
+
+###########################################
+########### Sampling Protocol ############
+###########################################
+
+n_samp <- seq.int(100, 1000, by = 100)
+
+# 75% of samples go in high occupancy, 25% go in low occupancy, re: recovery plan
+
+
