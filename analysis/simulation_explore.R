@@ -65,23 +65,29 @@ sd.gamma = 0.01 # woods 2019
 # must sum to the number of sites
 psi_cat_var <- list("low" = n_sites/2, "high" = n_sites/2)
 
-# we need all of these parameters for each scenario, the rest are fixed
-# perc_red, psi1, phi, sd.phi, gamma1, sd.gamma, p, cat_var_list
-sim_scenarios <- data.frame(psi1_high = c(0.2, 0.43), phi = c(.6, .8), p = c(0.4, 0.8)) %>%
+# get dataframe of all possible scenarios
+sim_scenarios <- data.frame(
+  # these are the parameters that change
+  psi1_high = c(0.2, 0.43), phi = c(.6, .8), p = c(0.4, 0.8)) %>%
+  # get all possible combinations
   tidyr::expand(psi1_high, phi,p) %>%
+  # and give each unique combination an ID
   mutate(sim_id = row_number()) %>%
   # these are the same for all scenarios right now
   mutate(sd_phi = 0.04, sd_gamma = 0.01, psi1_low = 0.03, perc_red = 0.25)
 
+# get scenarios, one for each emu
 sim_scenarios_emu <- bind_rows(sim_scenarios %>% mutate(emu = "BRE"),
                                sim_scenarios %>% mutate(emu = "BRW"),
                                sim_scenarios %>% mutate(emu = "CP"),
                                sim_scenarios %>% mutate(emu = "SRM"),
                                sim_scenarios %>% mutate(emu = "UGM")) %>%
+  # get sample sizes for low and high occupancy for each emu
   left_join(emu_ratio %>%
               select(emu, occupancy, hex_count) %>%
               tidyr::pivot_wider(names_from = occupancy, values_from = hex_count) %>%
               rename(low_n = low, high_n = high)) %>%
+  # get the columns in the right order
   select(sim_id, emu, psi1_low, psi1_high, phi, sd_phi, sd_gamma, p, low_n, high_n, perc_red)
 
 ###########################################
