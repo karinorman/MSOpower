@@ -27,7 +27,15 @@ emu_veg <- read.csv(here::here("data/EMU_veg_types.csv")) %>%
 
 emu_ratio <- emu_veg %>%
   group_by(UNIT, occupancy) %>%
-  summarize(hex_count = sum(hex_num))
+  summarize(hex_count = sum(hex_num)) %>%
+  mutate(emu = case_when(
+    UNIT == "Basin & Range - East" ~ "BRE",
+    UNIT == "Basin & Range - West" ~ "BRW",
+    UNIT == "Colorado Plateau" ~ "CP",
+    UNIT == "Southern Rocky Mountains" ~ "SRM",
+    UNIT == "Upper Gila Mountains" ~ "UGM"
+  )) %>%
+  ungroup()
 
 
 ###########################################
@@ -59,12 +67,25 @@ psi_cat_var <- list("low" = n_sites/2, "high" = n_sites/2)
 
 # we need all of these parameters for each scenario, the rest are fixed
 # perc_red, psi1, phi, sd.phi, gamma1, sd.gamma, p, cat_var_list
-sim_scenarios <- data.frame(psi1_low = rep(0.03, 2), psi1_high = rep(0.43, 2), phi = rep(0.8, 2),
-                               sd_phi = rep(0.04, 2), sd_gamma = rep(0.01, 2), p = c(0.4, 0.8),
-                            low_n = rep(15602, 2), high_n = rep(15602, 2), perc_red = rep(0.25, 2))
+sim_scenarios <- data.frame(psi1_high = c(0.2, 0.43), phi = c(.6, .8), p = c(0.4, 0.8)) %>%
+  tidyr::expand(psi1_high, phi,p) %>%
+  mutate(sim_id = row_number()) %>%
+  # these are the same for all scenarios right now
+  mutate(sd_phi = 0.04, sd_gamma = 0.01, psi1_low = 0.03, perc_red = 0.25)
+
+sim_scenarios_emu <- bind_rows(sim_scenarios %>% mutate(emu = "BRE"),
+                               sim_scenarios %>% mutate(emu = "BRW"),
+                               sim_scenarios %>% mutate(emu = "CP"),
+                               sim_scenarios %>% mutate(emu = "SRM"),
+                               sim_scenarios %>% mutate(emu = "UGM")) %>%
+  left_join(emu_ratio %>%
+              select(emu, occupancy, hex_count) %>%
+              tidyr::pivot_wider(names_from = occupancy, values_from = hex_count) %>%
+              rename(low_n = low, high_n = high)) %>%
+  select(sim_id, emu, psi1_low, psi1_high, phi, sd_phi, sd_gamma, p, low_n, high_n, perc_red)
 
 ###########################################
 ########### Generate data sets ############
 ###########################################
 
-single_rep <- purrr::pmap(sim_scenarios, sim_dataset, nyear = nyear, n_vis = 2)
+single_rep <- purrr::pmap(sim_scenarios_emu[1,] %>% select(-sim_id, -emu), sim_dataset, nyear = nyear, n_vis = 2)
