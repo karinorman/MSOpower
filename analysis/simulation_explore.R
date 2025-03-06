@@ -1,11 +1,6 @@
 library(dplyr)
 library(spOccupancy)
 
-### Fixed Parameters ###
-## effect_size = .25 decline
-## study_duration = 10
-## single deployment, two sample periods
-
 # real world vegtypes for each emu
 emu_veg <- read.csv(here::here("data/EMU_veg_types.csv")) %>%
   # let's say which we think has high or low occupancy
@@ -34,71 +29,42 @@ emu_ratio <- emu_veg %>%
   group_by(UNIT, occupancy) %>%
   summarize(hex_count = sum(hex_num))
 
+
+###########################################
+######## Define simulation parameters #####
+###########################################
+
+## Fixed study characteristics
+nyear = 10
+n_sites = sum(emu_veg$hex_num)
+n_vis = 2
+
 ### Parameters ###
-psi1 = 0.43 #initial occupancy, from Wood 2019
+psi1 = list("low" = 0.03, "high" = 0.43) #initial occupancy, from Wood 2019
 p = c(0.4, 0.8) #detection probability, from Wood 2019
 epsilon1 = .2 #extinction probability, Wood 2019, based on biology?
+phi = 1 - epsilon1 # survival
+sd.phi = 0.04 # also 0.01 in Woods 2019
+
+perc_red = 0.25 # 25% decline in occupancy
 
 # derive from psi1 = gamma/(gamma + epsilon); occupancy at equilibrium
-gamma1 = (psi1 * epsilon1)/(1-psi1)
+gamma = (unlist(psi1) * epsilon1)/(1-unlist(psi1))
+sd.gamma = 0.01 # woods 2019
 
-# info about the sample frame
-n_pot_tot <- sum(emu_veg$hex_num)
+# defining categorical variable impacting psi
+# named list of number of sites in each category
+# must sum to the number of sites
+psi_cat_var <- list("low" = n_sites/2, "high" = n_sites/2)
 
-### Design scenarios ###
-n_sites
-n_recorders
+# we need all of these parameters for each scenario, the rest are fixed
+# perc_red, psi1, phi, sd.phi, gamma1, sd.gamma, p, cat_var_list
+sim_scenarios <- data.frame(psi1_low = rep(0.03, 2), psi1_high = rep(0.43, 2), phi = rep(0.8, 2),
+                               sd_phi = rep(0.04, 2), sd_gamma = rep(0.01, 2), p = c(0.4, 0.8),
+                            low_n = rep(15602, 2), high_n = rep(15602, 2), perc_red = rep(0.25, 2))
 
+###########################################
+########### Generate data sets ############
+###########################################
 
-### Simulate decline by multiplicative decline in survival
-
-# single time period, for the whole grid
-gen_dim = ceiling(sqrt(n_pot_tot))
-test_data <- simOcc(J.x = gen_dim, J.y = gen_dim,
-          n.rep = rep(2, gen_dim*gen_dim),
-          # categorical variable controlling occupancy, so intercept is lower reference category
-          # and slope is reference category + amount to bring up to high occupancy
-          beta = c(psi1 - 0.2, psi1),
-          # intercept with no covariates
-          alpha = c(p[1], 0))
-
-# Detection-nondetection data
-y <- test_data$y
-# Occurrence design matrix for fixed effects
-X <- test_data$X
-# Detection design matrix for fixed effets
-X.p <- test_data$X.p
-# Occurrence values
-psi <- test_data$psi
-# Spatial coordinates
-coords <- test_data$coords
-
-# Package all data into a list
-# Occurrence covariates consists of the fixed effects and random effect
-occ.covs <- as.matrix(X[, 2])
-colnames(occ.covs) <- c('occ.cov.1')
-
-# Detection covariates consists of the fixed effects and random effect
-det.covs <- list(det.cov.1 = X.p[, , 2])
-                 #det.factor.1 = X.p.re[, , 1])
-# Package into a list for spOccupancy
-data.list <- list(y = y,
-                  occ.covs = occ.covs,
-                  det.covs = det.covs,
-                  coords = coords)
-
-inits <- list(alpha = 0, beta = 0, sigma.sq.psi = 0.5,
-              sigma.sq.p = 0.5, z = apply(test_data$y, 1, max, na.rm = TRUE),
-              sigma.sq = 1, phi = 3 / 0.5)
-out.full <- PGOcc(occ.formula = ~ occ.cov.1,
-                    det.formula = ~ det.cov.1,
-                    data = data.list,
-                    inits = inits,
-                    n.samples = 5000,
-                    n.report = 100,
-                    n.burn = 1000,
-                    n.chains = 1)
-
-
-# add trend
-trend_data <- simTIntOcc()
+single_rep <- purrr::pmap(sim_scenarios, sim_dataset, nyear = nyear, n_vis = 2)
