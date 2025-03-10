@@ -1,4 +1,6 @@
 library(dplyr)
+library(tidyr)
+library(purrr)
 library(spOccupancy)
 
 # real world vegtypes for each emu
@@ -48,32 +50,16 @@ n_sites = sum(emu_veg$hex_num)
 n_vis = 2
 
 ### Parameters ###
-psi1 = list("low" = 0.03, "high" = 0.43) #initial occupancy, from Wood 2019
-p = c(0.4, 0.8) #detection probability, from Wood 2019
-epsilon1 = .2 #extinction probability, Wood 2019, based on biology?
-phi = 1 - epsilon1 # survival
-sd.phi = 0.04 # also 0.01 in Woods 2019
-
-perc_red = 0.25 # 25% decline in occupancy
-
-# derive from psi1 = gamma/(gamma + epsilon); occupancy at equilibrium
-gamma = (unlist(psi1) * epsilon1)/(1-unlist(psi1))
-sd.gamma = 0.01 # woods 2019
-
-# defining categorical variable impacting psi
-# named list of number of sites in each category
-# must sum to the number of sites
-psi_cat_var <- list("low" = n_sites/2, "high" = n_sites/2)
 
 # get dataframe of all possible scenarios
 sim_scenarios <- data.frame(
-  # these are the parameters that change
+  # these are the parameters that change, taken directly from Woods 2019
   psi1_high = c(0.2, 0.43), phi = c(.6, .8), p = c(0.4, 0.8)) %>%
   # get all possible combinations
   tidyr::expand(psi1_high, phi,p) %>%
   # and give each unique combination an ID
   mutate(sim_id = row_number()) %>%
-  # these are the same for all scenarios right now
+  # these are the same for all scenarios right now, sd's from Wood 2019, psi1_low kinda made up
   mutate(sd_phi = 0.04, sd_gamma = 0.01, psi1_low = 0.03, perc_red = 0.25)
 
 # get scenarios, one for each emu
@@ -87,14 +73,21 @@ sim_scenarios_emu <- bind_rows(sim_scenarios %>% mutate(emu = "BRE"),
               select(emu, occupancy, hex_count) %>%
               tidyr::pivot_wider(names_from = occupancy, values_from = hex_count) %>%
               rename(low_n = low, high_n = high)) %>%
+  unite("sim_id", emu, sim_id, sep = "_") %>%
   # get the columns in the right order
-  select(sim_id, emu, psi1_low, psi1_high, phi, sd_phi, sd_gamma, p, low_n, high_n, perc_red)
+  select(sim_id, psi1_low, psi1_high, phi, sd_phi, sd_gamma, p, low_n, high_n, perc_red)
 
 ###########################################
 ########### Generate data sets ############
 ###########################################
 
-single_rep <- purrr::pmap(sim_scenarios_emu[1,] %>% select(-sim_id, -emu), sim_dataset, nyear = nyear, n_vis = 2)
+simn <- 100
+
+#single_rep <- purrr::pmap(sim_scenarios_emu %>% select(-sim_id), sim_dataset, nyear = nyear, n_vis = 2) %>% set_names(sim_scenarios_emu$sim_id)
+sim_list <- map(1:simn, ~purrr::pmap(sim_scenarios_emu %>% select(-sim_id), sim_dataset, nyear = nyear, n_vis = 2) %>% set_names(sim_scenarios_emu$sim_id)) %>%
+  set_names(paste0("rep", 1:simn))
+
+map(sim_scenarios_emu$sim_id, ~map_depth(sim_list, 2, .x))
 
 ###########################################
 ########### Sampling Protocol ############
