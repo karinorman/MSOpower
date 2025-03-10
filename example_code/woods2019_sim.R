@@ -27,7 +27,7 @@ psi_cat_var <- list("low" = n_sites/2, "high" = n_sites/2)
 ############ Simulation ################
 ########################################
 
-sim_dataset <- function(psi1_low, psi1_high, phi, sd_phi, sd_gamma, p, low_n, high_n, perc_red, nyear, n_vis){
+woods_sim_dataset <- function(psi1_low, psi1_high, phi, sd_phi, sd_gamma, p, low_n, high_n, perc_red, nyear, n_vis){
 
   ### psi1 = initial occupancy
   ### phi = local survival in year 1
