@@ -36,23 +36,32 @@ sim_dataset <- function(psi1_low, psi1_high, phi, sd_phi, sd_gamma, p, low_n, hi
   # make survival in a given year a function of previous year and the reduction
   #year_perc_red <- 1 - log(exp(1 -perc_red)/(nyear - 1))
 
-  #if we want occupancy to decline by perc_red, how much should survival decline in that time period
+  #if we want occupancy to decline by perc_red over t-1, this is the annual decrease
+  annual_perc_red = exp(log(1-perc_red)/(nyear-1))
+
+  annual_ext_red_low = (gamma[["low"]] - (annual_perc_red*psi1_low*gamma[["low"]]))/(annual_perc_red*psi1_low*(1-phi))
+  annual_ext_red_high = (gamma[["high"]] - (annual_perc_red*psi1_high*gamma[["high"]]))/(annual_perc_red*psi1_high*(1-phi))
+
   #survival_perc_red <- (((1-perc_red)*unlist(psi1["high"])*(1-phi))/perc_red)*unlist(gamma["high"])
   # and how much should survival decline yearly
-  year_perc_red <- 1 - (exp(log(1 - perc_red)/(nyear)))
+  # year_perc_red <- 1 - (exp(log(1 - perc_red)/(nyear)))
 
   ### year effects on survival with simulate yearly decreases
-  phi_year = rep(0,nyear-1)
-  phi_year[1] = phi
+  phi_year_low = rep(0,nyear-1)
+  phi_year_high = rep(0,nyear-1)
+
+  phi_year_low[1] = phi
+  phi_year_high[1] = phi
 
   # create phi for each time step with a reduction from the previous year's phi
   for (j in 2:(nyear-1)) {
-    phi_year[j] = phi_year[j-1] * (1 - year_perc_red)
+    phi_year_low[j] = 1 - ((1-phi_year_low[j-1]) * annual_ext_red_low)
+    phi_year_high[j] = 1 - ((1-phi_year_high[j-1]) * annual_ext_red_high)
   }
 
   # get noise around phi at each time step drawn from N(phi, sd_phi)
-  phi_year <- purrr::map(phi_year, ~rnorm(1, .x, sd_phi)) %>% unlist()
-
+  phi_year_low <- purrr::map(phi_year_low, ~rnorm(1, .x, sd_phi)) %>% unlist()
+  phi_year_high <- purrr::map(phi_year_high, ~rnorm(1, .x, sd_phi)) %>% unlist()
 
   ### Simulate tocc and obsocc from t = 1 to t = nyear
   ### First use initial values to generate year 1
@@ -66,7 +75,7 @@ sim_dataset <- function(psi1_low, psi1_high, phi, sd_phi, sd_gamma, p, low_n, hi
   # function that gets occurrence for next time step
   occ_tplus1 <- function(occ_t, cat_name, t){
     if (occ_t == 1){
-      occ_tplus1 <- rbinom(1,1, phi_year[t-1])
+      occ_tplus1 <- ifelse(cat_name == "low", rbinom(1,1, phi_year_low[t-1]), rbinom(1,1, phi_year_high[t-1]))
     } else {
       occ_tplus1 <- ifelse(cat_name == "low", rbinom(1,1, gamma_year_low[t-1]), rbinom(1,1,gamma_year_high[t-1]))
     }
@@ -89,7 +98,14 @@ sim_dataset <- function(psi1_low, psi1_high, phi, sd_phi, sd_gamma, p, low_n, hi
       mutate(visit = .x))
 
   ### Output all the randomly generated pieces separately
-  out_list <- list(true_occ = tocc, obs_occ = obsocc, phi_survival = phi_year,
+  out_list <- list(true_occ = tocc, obs_occ = obsocc,
+                   phi_survival = list(phi_year_low = phi_year_low, phi_year_high = phi_year_high),
                    gamma_colonization = list(gamma_year_low = gamma_year_low, gamma_year_high = gamma_year_high))
+
+}
+
+sim_dataset_nreps <- function(psi1_low, psi1_high, phi, sd_phi, sd_gamma, p, low_n, high_n, perc_red, nyear, n_vis, n){
+
+  purrr::pmap(sim_scenarios_emu %>% filter(emu == "BRE") %>% select(-sim_id, -emu), sim_dataset, nyear = nyear, n_vis = 2)
 
 }

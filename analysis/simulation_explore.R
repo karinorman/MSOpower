@@ -1,6 +1,7 @@
 library(dplyr)
 library(tidyr)
 library(purrr)
+library(furrr)
 library(spOccupancy)
 
 # real world vegtypes for each emu
@@ -84,10 +85,94 @@ sim_scenarios_emu <- bind_rows(sim_scenarios %>% mutate(emu = "BRE"),
 simn <- 100
 
 #single_rep <- purrr::pmap(sim_scenarios_emu %>% select(-sim_id), sim_dataset, nyear = nyear, n_vis = 2) %>% set_names(sim_scenarios_emu$sim_id)
-sim_list <- map(1:simn, ~purrr::pmap(sim_scenarios_emu %>% select(-sim_id), sim_dataset, nyear = nyear, n_vis = 2) %>% set_names(sim_scenarios_emu$sim_id)) %>%
+
+plan(multisession, workers = 15)
+sim_list <- furrr::future_map(1:simn, ~purrr::pmap(sim_scenarios_emu %>%
+                                                     select(-sim_id), sim_dataset, nyear = nyear, n_vis = 2) %>%
+                                set_names(sim_scenarios_emu$sim_id),
+                              seed = TRUE) %>%
   set_names(paste0("rep", 1:simn))
 
-map(sim_scenarios_emu$sim_id, ~map_depth(sim_list, 2, .x))
+# reorder so top level of nested list is a sim scenario
+sim_list_emu <- map(sim_scenarios_emu$sim_id, function(emu) {
+  map(1:simn, ~pluck(sim_list, .x, emu)) %>%
+    set_names(paste0("rep", 1:simn))}) %>%
+  set_names(sim_scenarios_emu$sim_id)
+
+#get true occurrence for each rep and sim
+true_occ <- map_dfr(sim_scenarios_emu$sim_id, function(emu){
+  map_dfr(1:simn, ~pluck(sim_list_emu, emu, .x, "true_occ") %>%
+            group_by(cat_var) %>%
+            select(-site_id) %>%
+            summarize(across(everything(), mean)) %>%
+            mutate(rep = .x)) %>%
+    mutate(sim_id = emu)
+})
+
+true_occ_stats <- true_occ %>%
+  pivot_longer(starts_with("t"), names_to = "time", values_to = "occ") %>%
+  select(-rep) %>%
+  group_by(sim_id, cat_var, time) %>%
+  summarize(mean = mean(occ),
+            lower = mean(occ) - qt(1- 0.05/2, (n() - 1))*sd(occ)/sqrt(n()),
+            upper = mean(occ) + qt(1- 0.05/2, (n() - 1))*sd(occ)/sqrt(n())) %>%
+  ungroup() %>%
+  separate(sim_id, c("emu", "sim_num"), sep = "_", remove = FALSE) %>%
+  mutate(time = as.numeric(stringr::str_remove(time, "t")))
+
+#This returns giant dataframe, hasn't been processed into encounter histories yet
+# obs_occ <- map_dfr(sim_scenarios_emu$sim_id, function(emu){
+#   map_dfr(1:3, ~pluck(sim_list_emu, emu, .x, "obs_occ") %>% mutate(rep = .x)) %>%
+#     mutate(sim_id = emu)
+# })
+
+###########################################
+########## Check Realized Trend ###########
+###########################################
+library(lme4)
+library(broom.mixed)
+
+true_occ_model_df <- true_occ %>%
+  pivot_longer(starts_with("t"), names_to = "time", values_to = "occ") %>%
+  mutate(time = as.numeric(stringr::str_remove(time, "t")))
+
+
+model_fit_df <- true_occ_model_df %>%
+  group_by(sim_id, cat_var) %>%
+  nest() %>%
+  # fit model for each sim_id and cat variable
+  mutate(model = map(data, ~lmer(occ ~ time + (1|rep), data = .x) %>% broom.mixed::tidy())) %>%
+  select(-data) %>%
+  unnest(model) %>%
+  # get slope and intercept for mean effect
+  filter(term %in% c("time", "(Intercept)")) %>%
+  select(-std.error, -statistic, -group, -effect) %>%
+  pivot_wider(names_from = term, values_from = estimate) %>%
+  rename(intercept = `(Intercept)`) %>%
+  mutate(t10 = intercept + (time * 10),
+         t1 =  intercept + time,
+         percent_change = ((t10 - t1)/abs(t1))) %>%
+  separate(sim_id, c("emu", "sim_num"), sep = "_", remove = FALSE) %>%
+  left_join(sim_scenarios %>% mutate(sim_id = as.character(sim_id)), by = c("sim_num" = "sim_id"))
+
+
+
+###########################################
+########### Visualize True Occ ############
+###########################################
+library(ggplot2)
+
+true_occ_stats %>%
+  mutate(sim_num_cat = paste0(cat_var, sim_num)) %>%
+  filter(emu == "BRE") %>%
+  ggplot(aes(x = time, y = mean)) +
+  geom_ribbon(aes(ymin = lower, ymax = upper, line = sim_num_cat, fill = as.factor(sim_num)), alpha = 0.3) +
+  geom_line(aes(line = sim_num_cat, color = as.factor(sim_num))) +
+  theme_classic() +
+  facet_wrap(~cat_var, scales = "free") +
+  scale_color_discrete(name = "Sim Scenario") +
+  scale_fill_discrete(name = "Sim Scenario")
+
 
 ###########################################
 ########### Sampling Protocol ############
