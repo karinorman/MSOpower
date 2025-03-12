@@ -119,7 +119,8 @@ true_occ_stats <- true_occ %>%
             upper = mean(occ) + qt(1- 0.05/2, (n() - 1))*sd(occ)/sqrt(n())) %>%
   ungroup() %>%
   separate(sim_id, c("emu", "sim_num"), sep = "_", remove = FALSE) %>%
-  mutate(time = as.numeric(stringr::str_remove(time, "t")))
+  mutate(time = as.numeric(stringr::str_remove(time, "t"))) %>%
+  left_join(sim_scenarios %>% mutate(sim_id = as.character(sim_id)), by = c("sim_num" = "sim_id"))
 
 #This returns giant dataframe, hasn't been processed into encounter histories yet
 # obs_occ <- map_dfr(sim_scenarios_emu$sim_id, function(emu){
@@ -164,15 +165,32 @@ model_fit_df <- true_occ_model_df %>%
 library(ggplot2)
 
 true_occ_stats %>%
-  #filter(emu == "BRE") %>%
+  #filter(occupancy == "low") %>%
   ggplot(aes(x = time, y = mean)) +
   geom_ribbon(aes(ymin = lower, ymax = upper, fill = as.factor(sim_num)), alpha = 0.3) +
   geom_line(aes(color = as.factor(sim_num))) +
   theme_classic() +
   facet_wrap(~emu, scales = "free") +
   scale_color_discrete(name = "Sim Scenario") +
-  scale_fill_discrete(name = "Sim Scenario")
+  scale_fill_discrete(name = "Sim Scenario") +
+  geom_hline(yintercept = 0.03, linetype = "dotted") +
+  geom_hline(yintercept = 0.0225, linetype = "dotted") +
+  geom_hline(yintercept = 0.2, linetype = "dotted") +
+  geom_hline(yintercept = 0.15, linetype = "dotted") +
+  geom_hline(yintercept = 0.43, linetype = "dotted") +
+  geom_hline(yintercept = 0.3225, linetype = "dotted")
 
+true_occ_stats %>%
+  filter(occupancy == "low") %>%
+  ggplot(aes(x = time, y = mean)) +
+  geom_ribbon(aes(ymin = lower, ymax = upper, fill = as.factor(sim_num)), alpha = 0.3) +
+  geom_line(aes(color = as.factor(sim_num))) +
+  theme_classic() +
+  facet_wrap(~emu, scales = "free") +
+  scale_color_discrete(name = "Sim Scenario") +
+  scale_fill_discrete(name = "Sim Scenario") +
+  geom_hline(yintercept = 0.03, linetype = "dotted") +
+  geom_hline(yintercept = 0.0225, linetype = "dotted")
 
 ###########################################
 ########### Sampling Protocol ############
