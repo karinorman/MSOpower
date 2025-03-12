@@ -31,20 +31,30 @@ sim_dataset <- function(psi, phi, sd_phi, sd_gamma, p, n_sites, perc_red, nyear,
   annual_perc_red = exp(log(1-perc_red)/(nyear-1))
 
   # and this is the annual decrease in extinction to get to that annual survival decrease
-  annual_ext_red = (gamma - (annual_perc_red*psi*gamma))/(annual_perc_red*psi*(1-phi))
+  #annual_ext_red = (gamma - (annual_perc_red*psi*gamma))/(annual_perc_red*psi*(1-phi))
 
-  #survival_perc_red <- (((1-perc_red)*unlist(psi["high"])*(1-phi))/perc_red)*unlist(gamma["high"])
-  # and how much should survival decline yearly
-  # year_perc_red <- 1 - (exp(log(1 - perc_red)/(nyear)))
 
+  # what should the true occupancy be if we have that annual reduction, start with initial occupancy
+  true_psi = c(psi, map(1:9, ~ psi * (annual_perc_red ^ .x))) %>% unlist()
+
+  # initialize vector for survival reduction
+  annual_phi_c = rep(0,nyear-1)
   ### year effects on survival with simulate yearly decreases
   phi_year = rep(0,nyear-1)
   phi_year[1] = phi
 
-  # create phi for each time step with a reduction from the previous year's phi
   for (j in 2:(nyear-1)) {
-    phi_year[j] = 1 - ((1-phi_year[j-1]) * annual_ext_red)
+    annual_phi_c[j] = ((annual_perc_red*true_psi[j-1]) - (gamma*(1-true_psi[j-1])))/(true_psi[j-1]*phi_year[j-1])
+
+    phi_year[j] = phi_year[j-1]*annual_phi_c[j]
   }
+
+
+
+  # # create phi for each time step with a reduction from the previous year's phi
+  # for (j in 2:(nyear-1)) {
+  #   phi_year[j] = phi_year[j-1]*annual_phi_c[j]
+  # }
 
   # get noise around phi at each time step drawn from N(phi, sd_phi)
   phi_year<- purrr::map(phi_year, ~rnorm(1, .x, sd_phi)) %>% unlist()
