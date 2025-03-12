@@ -62,7 +62,7 @@ sim_scenarios <- data.frame(
   mutate(sim_id = row_number(),
          occupancy = ifelse(psi == 0.03, "low", "high")) %>%
   # these are the same for all scenarios right now, sd's from Wood 2019, psi1_low kinda made up
-  mutate(sd_phi = 0.04, sd_gamma = 0.01, psi1_low = 0.03, perc_red = 0.25)
+  mutate(sd_phi = 0.04, sd_gamma = 0.01, perc_red = 0.25)
 
 # get scenarios, one for each emu
 sim_scenarios_emu <- bind_rows(sim_scenarios %>% mutate(emu = "BRE"),
@@ -103,8 +103,8 @@ sim_list_emu <- map(sim_scenarios_emu$sim_id, function(emu) {
 #get true occurrence for each rep and sim
 true_occ <- map_dfr(sim_scenarios_emu$sim_id, function(emu){
   map_dfr(1:simn, ~pluck(sim_list_emu, emu, .x, "true_occ") %>%
-            group_by(cat_var) %>%
             select(-site_id) %>%
+            ungroup() %>%
             summarize(across(everything(), mean)) %>%
             mutate(rep = .x)) %>%
     mutate(sim_id = emu)
@@ -113,7 +113,7 @@ true_occ <- map_dfr(sim_scenarios_emu$sim_id, function(emu){
 true_occ_stats <- true_occ %>%
   pivot_longer(starts_with("t"), names_to = "time", values_to = "occ") %>%
   select(-rep) %>%
-  group_by(sim_id, cat_var, time) %>%
+  group_by(sim_id, time) %>%
   summarize(mean = mean(occ),
             lower = mean(occ) - qt(1- 0.05/2, (n() - 1))*sd(occ)/sqrt(n()),
             upper = mean(occ) + qt(1- 0.05/2, (n() - 1))*sd(occ)/sqrt(n())) %>%
@@ -139,7 +139,7 @@ true_occ_model_df <- true_occ %>%
 
 
 model_fit_df <- true_occ_model_df %>%
-  group_by(sim_id, cat_var) %>%
+  group_by(sim_id) %>%
   nest() %>%
   # fit model for each sim_id and cat variable
   mutate(model = map(data, ~lmer(occ ~ time + (1|rep), data = .x) %>% broom.mixed::tidy())) %>%
@@ -154,7 +154,7 @@ model_fit_df <- true_occ_model_df %>%
          t1 =  intercept + time,
          percent_change = ((t10 - t1)/abs(t1))) %>%
   separate(sim_id, c("emu", "sim_num"), sep = "_", remove = FALSE) %>%
-  left_join(sim_scenarios %>% mutate(sim_id = as.character(sim_id)), by = c("sim_num" = "sim_id"))
+  left_join(sim_scenarios_emu)
 
 
 
@@ -164,13 +164,12 @@ model_fit_df <- true_occ_model_df %>%
 library(ggplot2)
 
 true_occ_stats %>%
-  mutate(sim_num_cat = paste0(cat_var, sim_num)) %>%
-  filter(emu == "BRE") %>%
+  #filter(emu == "BRE") %>%
   ggplot(aes(x = time, y = mean)) +
-  geom_ribbon(aes(ymin = lower, ymax = upper, line = sim_num_cat, fill = as.factor(sim_num)), alpha = 0.3) +
-  geom_line(aes(line = sim_num_cat, color = as.factor(sim_num))) +
+  geom_ribbon(aes(ymin = lower, ymax = upper, fill = as.factor(sim_num)), alpha = 0.3) +
+  geom_line(aes(color = as.factor(sim_num))) +
   theme_classic() +
-  facet_wrap(~cat_var, scales = "free") +
+  facet_wrap(~emu, scales = "free") +
   scale_color_discrete(name = "Sim Scenario") +
   scale_fill_discrete(name = "Sim Scenario")
 
