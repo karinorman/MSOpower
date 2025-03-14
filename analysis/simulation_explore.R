@@ -83,7 +83,7 @@ sim_scenarios_emu <- bind_rows(sim_scenarios %>% mutate(emu = "BRE"),
 ########### Generate data sets ############
 ###########################################
 
-simn <- 100
+simn <- 500
 
 #single_rep <- purrr::pmap(sim_scenarios_emu %>% select(-sim_id), sim_dataset, nyear = nyear, n_vis = 2) %>% set_names(sim_scenarios_emu$sim_id)
 
@@ -121,6 +121,18 @@ true_occ_stats <- true_occ %>%
   separate(sim_id, c("emu", "sim_num"), sep = "_", remove = FALSE) %>%
   mutate(time = as.numeric(stringr::str_remove(time, "t"))) %>%
   left_join(sim_scenarios %>% mutate(sim_id = as.character(sim_id)), by = c("sim_num" = "sim_id"))
+
+# let's look at the annual reduction in survival for different scenarios
+phi_red <- map_dfr(sim_scenarios_emu$sim_id, function(emu){
+  map_dfr(1:simn, ~pluck(sim_list_emu, emu, .x, "phi_reduction") %>%
+            data.frame(year = 2:9, phi_reduction = .) %>%
+            mutate(rep = .x)) %>%
+    mutate(sim_id = emu)
+}) %>%
+  group_by(sim_id, year) %>%
+  summarize(phi_reduction = mean(phi_reduction)) %>%
+  mutate(phi_multiplier = phi_reduction, phi_reduction = 1- phi_multiplier)
+
 
 #This returns giant dataframe, hasn't been processed into encounter histories yet
 # obs_occ <- map_dfr(sim_scenarios_emu$sim_id, function(emu){
@@ -191,6 +203,15 @@ true_occ_stats %>%
   scale_fill_discrete(name = "Sim Scenario") +
   geom_hline(yintercept = 0.03, linetype = "dotted") +
   geom_hline(yintercept = 0.0225, linetype = "dotted")
+
+# visualize annual reduction in survival to get the desired trend
+phi_red %>%
+  separate(sim_id, c("emu", "sim_num"), sep = "_", remove = FALSE) %>%
+  left_join(sim_scenarios %>% mutate(sim_id = as.character(sim_id)), by = c("sim_num" = "sim_id")) %>%
+  filter(p == 0.8) %>%
+  ggplot(aes(x = year, y = phi_reduction)) +
+  geom_line(aes(color = sim_num)) +
+  facet_wrap(~emu, scales = "free")
 
 ###########################################
 ########### Sampling Protocol ############

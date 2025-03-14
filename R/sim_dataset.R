@@ -37,16 +37,19 @@ sim_dataset <- function(psi, phi, sd_phi, sd_gamma, p, n_sites, perc_red, nyear,
   # what should the true occupancy be if we have that annual reduction, start with initial occupancy
   true_psi = c(psi, map(1:9, ~ psi * (annual_perc_red ^ .x))) %>% unlist()
 
-  # initialize vector for survival reduction
-  annual_phi_c = rep(0,nyear-1)
-  ### year effects on survival with simulate yearly decreases
+  ### initialize vector for yearly survival, after reduction
   phi_year = rep(0,nyear-1)
   phi_year[1] = phi
 
-  for (j in 2:(nyear-1)) {
-    annual_phi_c[j] = ((annual_perc_red*true_psi[j-1]) - (gamma*(1-true_psi[j-1])))/(true_psi[j-1]*phi_year[j-1])
+  # initialize vector for survival reduction, need length(phi_year)-1 or nyear-2 reductions to get phi's after initial phi
+  annual_phi_red = rep(0,nyear-2)
 
-    phi_year[j] = phi_year[j-1]*annual_phi_c[j]
+
+  for (j in 2:(nyear-1)) {
+    annual_phi_red[j-1] = ((annual_perc_red*true_psi[j-1]) - (gamma*(1-true_psi[j-1])))/(true_psi[j-1]*phi_year[j-1])
+
+    phi_year[j] = phi_year[j-1]*annual_phi_red[j-1]
+
   }
 
 
@@ -98,6 +101,7 @@ sim_dataset <- function(psi, phi, sd_phi, sd_gamma, p, n_sites, perc_red, nyear,
   ### Output all the randomly generated pieces separately
   out_list <- list(true_occ = tocc, obs_occ = obsocc,
                    phi_survival = phi_year,
+                   phi_reduction = annual_phi_red,
                    gamma_colonization = gamma_year)
 
 }
