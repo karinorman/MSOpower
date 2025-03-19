@@ -1,3 +1,9 @@
+####################################################################################################################
+## Power Analysis Goal: Owl occupancy rates must show a stable or increasing trend after 10 years of monitoring.
+## The study design to verify this criterion must have a power of 90% (Type II error rate β = 0.10) to detect a
+## 25% decline in occupancy rate over the 10-year period with a Type I error rate (α) of 0.10.
+####################################################################################################################
+
 library(dplyr)
 library(tidyr)
 library(purrr)
@@ -83,7 +89,7 @@ sim_scenarios_emu <- bind_rows(sim_scenarios %>% mutate(emu = "BRE"),
 ########### Generate data sets ############
 ###########################################
 
-simn <- 500
+simn <- 100
 
 #single_rep <- purrr::pmap(sim_scenarios_emu %>% select(-sim_id), sim_dataset, nyear = nyear, n_vis = 2) %>% set_names(sim_scenarios_emu$sim_id)
 
@@ -219,6 +225,91 @@ phi_red %>%
 
 n_samp <- seq.int(100, 1000, by = 100)
 
-# 75% of samples go in high occupancy, 25% go in low occupancy, re: recovery plan
+# map high occupancy sims to their low occupancy counterpart
+sim_map <- sim_scenarios_emu %>%
+  select(sim_id, psi, phi, p) %>%
+  filter(psi != 0.03) %>%
+  separate(sim_id, c("emu"), sep = "_", remove = FALSE) %>%
+  select(-psi) %>%
+  rename(high_name = sim_id) %>%
+  left_join(sim_scenarios_emu %>%
+              select(sim_id, psi, phi, p) %>%
+              filter(psi == 0.03) %>%
+              separate(sim_id, c("emu"), sep = "_", remove = FALSE) %>%
+              select(-psi) %>%
+              rename(low_name = sim_id))
 
+model_check <- function(high_name, low_name, repn) {
+
+  obs_occ_df <- bind_rows(pluck(sim_list_emu, low_name, repn, "obs_occ") %>% mutate(landtype = "low"),
+                          pluck(sim_list_emu, high_name, repn, "obs_occ") %>% mutate(landtype = "high")) %>%
+    arrange(visit)
+
+  obs_occ_array <- obs_occ_df %>%
+    select(-site_id, landtype) %>%
+    split(obs_occ_df$visit) %>%
+    map(., ~ .x %>% select(-visit, -landtype) %>% as.matrix()) %>%
+    simplify2array()
+
+  landtype_cov <- obs_occ_df %>%
+    filter(visit == 1) %>%
+    select(landtype)
+
+  year_cov <- matrix(1:nyear, nrow = 1)
+  year_cov <- year_cov %x% rep(1, dim(obs_occ_array)[1])
+
+  occ.covs <- list(landtype = landtype_cov, year = year_cov)
+
+  #fit_model
+  n.chains <- 3
+  n.thin <- 1
+  n.burn <- 2000
+  n.batch <- 120
+  batch.length <- 25
+
+
+  z.init <- apply(obs_occ_array, c(1, 2), function(a) as.numeric(sum(a, na.rm = TRUE) > 0))
+  inits.list <- list(beta = 0,
+                     alpha = 0,
+                     z = z.init)
+
+  prior.list <- list(beta.normal = list(mean = 0, var = 2.72),
+                     alpha.normal = list(mean = 0, var = 2.72))
+
+  test_fit <- tPGOcc(occ.formula = ~ year + landtype,
+                     det.formula = ~ 1,
+                     data = list(y = obs_occ_array, occ.covs = occ.covs),
+                     inits = inits.list,
+                     priors = prior.list,
+                     n.omp.threads = 1,
+                     verbose = TRUE,
+                     n.report = 1000,
+                     n.burn = n.burn,
+                     n.thin = n.thin,
+                     n.chains = n.chains,
+                     n.batch = n.batch,
+                     batch.length = batch.length)
+
+  # get the posterior for the estimates
+  post <- as.data.frame(test_fit$beta.samples) %>%
+    rename(intercept = `(Intercept)`) %>%
+    #mutate(across(everything(), plogis)) %>%
+    mutate(t10 = plogis(year*10 + intercept),
+           t1 = plogis(year + intercept),
+           perc_change = (t10-t1)/t1)
+
+  true_trend <- true_occ %>%
+    filter(sim_id == high_name, rep == repn) %>%
+    mutate(perc_change = (t10-t1)/t1) %>%
+    pull(perc_change)
+
+  check_dist <- true_trend < max(post$perc_change) & true_trend > min(post$perc_change)
+
+  data.frame("sim_id" = high_name, "rep" = repn,
+             "true_perc_change" = true_trend, "est_perc_change" = mean(post$perc_change),
+             "in_dist" = check_dist, "samps_under" = sum(true_trend > post$perc_change),
+             "samps_over" = sum(true_trend < post$perc_change))
+}
+
+model_check(high_name = "BRE_5", low_name = "BRE_1", repn = 1)
 
