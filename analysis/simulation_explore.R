@@ -65,7 +65,7 @@ sim_scenarios <- data.frame(
   # get all possible combinations
   tidyr::expand(psi, phi,p) %>%
   # and give each unique combination an ID
-  mutate(sim_id = row_number(),
+  mutate(sim_num = row_number(),
          occupancy = ifelse(psi == 0.03, "low", "high")) %>%
   # these are the same for all scenarios right now, sd's from Wood 2019, psi1_low kinda made up
   mutate(sd_phi = 0.04, sd_gamma = 0.01, perc_red = 0.25)
@@ -81,9 +81,35 @@ sim_scenarios_emu <- bind_rows(sim_scenarios %>% mutate(emu = "BRE"),
               select(emu, occupancy, hex_count)) %>%
               # tidyr::pivot_wider(names_from = occupancy, values_from = hex_count) %>%
               # rename(low_n = low, high_n = high)) %>%
-  unite("sim_id", emu, sim_id, sep = "_") %>%
   # get the columns in the right order
-  select(sim_id, psi, phi, sd_phi, sd_gamma, p, n = hex_count, perc_red)
+  select(sim_num, emu, psi, phi, sd_phi, sd_gamma, p, n = hex_count, perc_red)
+
+# number of samples taken for a landscape, proportional to size of
+# plausibly occupied area in each emu
+percent_samp <- c(0.05, 0.15, 0.30, 0.40, 0.50)
+
+emu_sample_sizes <- emu_ratio %>%
+  filter(occupancy == "high") %>%
+  select(emu, hex_count) %>%
+  group_by(emu) %>%
+  # expand to get a row for each sample size
+  slice(rep(row_number(), length(percent_samp))) %>%
+  mutate(percent_samp = percent_samp) %>%
+  ungroup() %>%
+  # get the number of the high quality hexes to be sampled, increase by a third
+  # to account for sites in low quality hexes
+  mutate(n_samp = as.integer(round(hex_count * percent_samp)*(4/3))) %>%
+  group_by(emu, n_samp) %>%
+  # expand again to get a row for each simulation scenario
+  slice(rep(row_number() , n_distinct(sim_scenarios$sim_num))) %>%
+  mutate(sim_num = 1:n_distinct(sim_scenarios$sim_num))
+
+sim_scenarios_emu <- sim_scenarios_emu %>%
+  left_join(emu_sample_sizes %>% select(sim_num, emu, n_samp)) %>%
+  group_by(emu) %>%
+  mutate(sim_num = row_number()) %>%
+  unite("sim_id", emu, sim_num)
+
 
 ###########################################
 ########### Generate data sets ############
@@ -93,11 +119,12 @@ simn <- 100
 
 #single_rep <- purrr::pmap(sim_scenarios_emu %>% select(-sim_id), sim_dataset, nyear = nyear, n_vis = 2) %>% set_names(sim_scenarios_emu$sim_id)
 
+set.seed(42)
 plan(multisession, workers = 15)
 sim_list <- furrr::future_map(1:simn, ~purrr::pmap(sim_scenarios_emu %>%
-                                                     select(-sim_id), sim_dataset, nyear = nyear, n_vis = 2) %>%
+                                                     select(-sim_id, -n_samp), sim_dataset, nyear = nyear, n_vis = 2) %>%
                                 set_names(sim_scenarios_emu$sim_id),
-                              seed = TRUE) %>%
+                              .options=furrr_options(seed = TRUE)) %>%
   set_names(paste0("rep", 1:simn))
 
 # reorder so top level of nested list is a sim scenario
@@ -126,7 +153,7 @@ true_occ_stats <- true_occ %>%
   ungroup() %>%
   separate(sim_id, c("emu", "sim_num"), sep = "_", remove = FALSE) %>%
   mutate(time = as.numeric(stringr::str_remove(time, "t"))) %>%
-  left_join(sim_scenarios %>% mutate(sim_id = as.character(sim_id)), by = c("sim_num" = "sim_id"))
+  left_join(sim_scenarios_emu)
 
 # let's look at the annual reduction in survival for different scenarios
 phi_red <- map_dfr(sim_scenarios_emu$sim_id, function(emu){
@@ -182,11 +209,16 @@ model_fit_df <- true_occ_model_df %>%
 ###########################################
 library(ggplot2)
 
-true_occ_stats %>%
-  #filter(occupancy == "low") %>%
+true_occ_plot_df <- true_occ_stats %>%
+  group_by(phi, psi, p) %>%
+  mutate(line_id = cur_group_id()) %>%
+  left_join(emu_sample_sizes %>% select(emu, n_samp, percent_samp))
+
+true_occ_plot_df %>%
+  filter(percent_samp == 0.5) %>%
   ggplot(aes(x = time, y = mean)) +
-  geom_ribbon(aes(ymin = lower, ymax = upper, fill = as.factor(sim_num)), alpha = 0.3) +
-  geom_line(aes(color = as.factor(sim_num))) +
+  geom_ribbon(aes(ymin = lower, ymax = upper, fill = as.factor(line_id)), alpha = 0.3) +
+  geom_line(aes(color = as.factor(line_id))) +
   theme_classic() +
   facet_wrap(~emu, scales = "free") +
   scale_color_discrete(name = "Sim Scenario") +
@@ -198,11 +230,12 @@ true_occ_stats %>%
   geom_hline(yintercept = 0.43, linetype = "dotted") +
   geom_hline(yintercept = 0.3225, linetype = "dotted")
 
-true_occ_stats %>%
-  filter(occupancy == "low") %>%
+true_occ_plot_df %>%
+  filter(percent_samp == 0.5) %>%
+  filter(psi == 0.03) %>%
   ggplot(aes(x = time, y = mean)) +
-  geom_ribbon(aes(ymin = lower, ymax = upper, fill = as.factor(sim_num)), alpha = 0.3) +
-  geom_line(aes(color = as.factor(sim_num))) +
+  geom_ribbon(aes(ymin = lower, ymax = upper, fill = as.factor(line_id)), alpha = 0.3) +
+  geom_line(aes(color = as.factor(line_id))) +
   theme_classic() +
   facet_wrap(~emu, scales = "free") +
   scale_color_discrete(name = "Sim Scenario") +
@@ -212,8 +245,8 @@ true_occ_stats %>%
 
 # visualize annual reduction in survival to get the desired trend
 phi_red %>%
+  left_join(sim_scenarios_emu) %>%
   separate(sim_id, c("emu", "sim_num"), sep = "_", remove = FALSE) %>%
-  left_join(sim_scenarios %>% mutate(sim_id = as.character(sim_id)), by = c("sim_num" = "sim_id")) %>%
   filter(p == 0.8) %>%
   ggplot(aes(x = year, y = phi_reduction)) +
   geom_line(aes(color = sim_num)) +
@@ -223,26 +256,33 @@ phi_red %>%
 ########### Sampling Protocol ############
 ###########################################
 
-n_samp <- seq.int(100, 1000, by = 100)
-
 # map high occupancy sims to their low occupancy counterpart
 sim_map <- sim_scenarios_emu %>%
-  select(sim_id, psi, phi, p) %>%
+  select(sim_id, psi, phi, p, n_samp) %>%
   filter(psi != 0.03) %>%
   separate(sim_id, c("emu"), sep = "_", remove = FALSE) %>%
   select(-psi) %>%
   rename(high_name = sim_id) %>%
   left_join(sim_scenarios_emu %>%
-              select(sim_id, psi, phi, p) %>%
+              select(sim_id, psi, phi, p, n_samp) %>%
               filter(psi == 0.03) %>%
               separate(sim_id, c("emu"), sep = "_", remove = FALSE) %>%
               select(-psi) %>%
-              rename(low_name = sim_id))
+              rename(low_name = sim_id)) %>%
+  select(high_name, low_name, sample_size = n_samp)
 
-model_check <- function(high_name, low_name, repn) {
+model_check <- function(high_name, low_name, sample_size, repn) {
 
-  obs_occ_df <- bind_rows(pluck(sim_list_emu, low_name, repn, "obs_occ") %>% mutate(landtype = "low"),
-                          pluck(sim_list_emu, high_name, repn, "obs_occ") %>% mutate(landtype = "high")) %>%
+  print(c(high_name, repn))
+
+  low_n = round(sample_size*0.25)
+  high_n = round(sample_size*0.75)
+
+  low_obs <- pluck(sim_list_emu, low_name, repn, "obs_occ") %>% mutate(landtype = "low")
+  high_obs <- pluck(sim_list_emu, high_name, repn, "obs_occ") %>% mutate(landtype = "high")
+
+  obs_occ_df <- bind_rows(low_obs %>% filter(site_id %in% sample(unique(low_obs$site_id), low_n, replace = FALSE)),
+                          high_obs %>% filter(site_id %in% sample(unique(high_obs$site_id), high_n, replace = FALSE))) %>%
     arrange(visit)
 
   obs_occ_array <- obs_occ_df %>%
@@ -250,6 +290,10 @@ model_check <- function(high_name, low_name, repn) {
     split(obs_occ_df$visit) %>%
     map(., ~ .x %>% select(-visit, -landtype) %>% as.matrix()) %>%
     simplify2array()
+
+  if (dim(obs_occ_array)[1] != sample_size){
+    stop("incorrect realized sample size")
+  }
 
   landtype_cov <- obs_occ_df %>%
     filter(visit == 1) %>%
@@ -296,20 +340,41 @@ model_check <- function(high_name, low_name, repn) {
     #mutate(across(everything(), plogis)) %>%
     mutate(t10 = plogis(year*10 + intercept),
            t1 = plogis(year + intercept),
-           perc_change = (t10-t1)/t1)
+           perc_change = (t10-t1)/t1) %>%
+    mutate(sim_id = high_name, rep = repn)
 
   true_trend <- true_occ %>%
     filter(sim_id == high_name, rep == repn) %>%
     mutate(perc_change = (t10-t1)/t1) %>%
     pull(perc_change)
 
-  check_dist <- true_trend < max(post$perc_change) & true_trend > min(post$perc_change)
+  check_dist <- between(true_trend, min(post$perc_change),max(post$perc_change)) & !between(0, min(post$perc_change),max(post$perc_change))
 
-  data.frame("sim_id" = high_name, "rep" = repn,
+  return(list("power_check" = data.frame("sim_id" = high_name, "rep" = repn,
              "true_perc_change" = true_trend, "est_perc_change" = mean(post$perc_change),
-             "in_dist" = check_dist, "samps_under" = sum(true_trend > post$perc_change),
-             "samps_over" = sum(true_trend < post$perc_change))
+             "success" = check_dist, "samps_under" = sum(true_trend > post$perc_change),
+             "samps_over" = sum(true_trend < post$perc_change)),
+             "posterior" = post))
 }
 
-model_check(high_name = "BRE_5", low_name = "BRE_1", repn = 1)
+pwr_check <- model_check(high_name = "BRE_21", low_name = "BRE_1", sample_size = 40, repn = 1)
 
+set.seed(42)
+plan(multisession, workers = 15)
+power_check_list <- furrr::future_map(1:simn, function(x){ pmap(sim_map, model_check, repn = x)}, .options=furrr_options(seed = TRUE))
+
+power_check_df <- map_dfr(1:100, function(y){map_dfr(1:200, ~pluck(power_check_list, y, .x, "power_check"))})
+
+power_plot_df <- power_check_df %>%
+  group_by(sim_id) %>%
+  summarize(perc_success = sum(success)/simn) %>%
+  left_join(sim_scenarios_emu) %>%
+  group_by(psi, p, phi) %>%
+  mutate(line_id = cur_group_id()) %>%
+  separate(sim_id, c("emu", "sim_num"), sep = "_", remove = FALSE)
+
+power_plot_df %>%
+  ggplot(aes(x = n_samp, y = perc_success)) +
+  geom_line(aes(color = as.factor(line_id))) +
+  facet_wrap(~emu, scales = "free") +
+  theme_classic()
