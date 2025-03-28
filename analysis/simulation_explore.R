@@ -90,11 +90,14 @@ sim_scenarios_emu <- bind_rows(sim_scenarios %>% mutate(emu = "BRE"),
 sample_size_df <- emu_ratio %>%
   filter(occupancy == "high") %>%
   select(emu, hex_count) %>%
-  mutate(log_max_samp = ifelse(hex_count > 2500, ceiling(log(2500)), ceiling(log(hex_count)))) %>%
+  mutate(log_max_samp = ifelse(hex_count > 2500, ceiling(log(2500)), log(hex_count))) %>%
   rowwise() %>%
   mutate(log_samp = list(seq(2.3, log_max_samp, by = 0.5))) %>%
   unnest(log_samp) %>%
-  mutate(samp_size = round(exp(log_samp)))
+  mutate(samp_size = round(exp(log_samp))) %>%
+  # for smaller emu's, add a sample that's 100% of hexes
+  bind_rows(tibble(emu = "BRE", hex_count = 719, samp_size = 719),
+            tibble(emu = "BRW", hex_count = 329, samp_size = 329),)
 
 emu_sample_sizes <- emu_ratio %>%
   filter(occupancy == "high") %>%
@@ -122,8 +125,8 @@ simn <- 100
 #single_rep <- purrr::pmap(sim_scenarios_emu %>% select(-sim_id), sim_dataset, nyear = nyear, n_vis = 2) %>% set_names(sim_scenarios_emu$sim_id)
 
 set.seed(42)
-plan(multisession, workers = 2)
-sim_list <- furrr::future_map(1:simn, ~purrr::pmap(sim_scenarios_emu %>%
+plan(multisession, workers = 78)
+sim_list <- map(1:simn, ~furrr::future_pmap(sim_scenarios_emu %>%
                                                      select(-sim_id, -n_samp), sim_dataset, nyear = nyear, n_vis = 2) %>%
                                 set_names(sim_scenarios_emu$sim_id),
                               .options=furrr_options(seed = TRUE)) %>%
@@ -280,31 +283,38 @@ model_check <- function(high_name, low_name, sample_size, repn) {
 
   print(c(high_name, repn))
 
-  low_obs <- pluck(sim_list_emu, low_name, repn, "obs_occ") %>% mutate(landtype = "low")
+  # define sample size for high_n, grab data
   high_obs <- pluck(sim_list_emu, high_name, repn, "obs_occ") %>% mutate(landtype = "high")
-
   high_n = sample_size
-  # if we have enough low quality samples, this is the ratio
-  high_n = sample_size
-  low_n = round(high_n*(1/3))
-
-  if(low_n > n_distinct(low_obs$site_id)){
-    low_n = n_distinct(low_obs$site_id)
+  
+  if (!is.na(low_name)){
+    
+    low_n = round(high_n*(1/3))
+    low_obs <- pluck(sim_list_emu, low_name, repn, "obs_occ") %>% mutate(landtype = "low")
+    
+    if(low_n > n_distinct(low_obs$site_id)){
+      low_n = n_distinct(low_obs$site_id)
+    }
+    
+    obs_occ_df <- bind_rows(low_obs %>% filter(site_id %in% sample(unique(low_obs$site_id), low_n, replace = FALSE)),
+                            high_obs %>% filter(site_id %in% sample(unique(high_obs$site_id), high_n, replace = FALSE))) %>%
+      arrange(visit)
+  } else {
+    
+    low_n = NA
+    
+    obs_occ_df <- high_obs %>% 
+      filter(site_id %in% sample(unique(high_obs$site_id), high_n, replace = FALSE)) %>%
+      arrange(visit)
   }
 
-  obs_occ_df <- bind_rows(low_obs %>% filter(site_id %in% sample(unique(low_obs$site_id), low_n, replace = FALSE)),
-                          high_obs %>% filter(site_id %in% sample(unique(high_obs$site_id), high_n, replace = FALSE))) %>%
-    arrange(visit)
+
 
   obs_occ_array <- obs_occ_df %>%
     select(-site_id, landtype) %>%
     split(obs_occ_df$visit) %>%
     map(., ~ .x %>% select(-visit, -landtype) %>% as.matrix()) %>%
     simplify2array()
-
-  if (dim(obs_occ_array)[1] != sample_size){
-    stop("incorrect realized sample size")
-  }
 
   landtype_cov <- obs_occ_df %>%
     filter(visit == 1) %>%
@@ -330,6 +340,22 @@ model_check <- function(high_name, low_name, sample_size, repn) {
 
   prior.list <- list(beta.normal = list(mean = 0, var = 2.72),
                      alpha.normal = list(mean = 0, var = 2.72))
+  
+  if (is.na(low_n)){
+    test_fit <- tPGOcc(occ.formula = ~ year,
+                       det.formula = ~ 1,
+                       data = list(y = obs_occ_array, occ.covs = occ.covs),
+                       inits = inits.list,
+                       priors = prior.list,
+                       n.omp.threads = 1,
+                       verbose = TRUE,
+                       n.report = 750,
+                       n.burn = n.burn,
+                       n.thin = n.thin,
+                       n.chains = n.chains,
+                       n.batch = n.batch,
+                       batch.length = batch.length)
+  } else{
 
   test_fit <- tPGOcc(occ.formula = ~ year + landtype,
                      det.formula = ~ 1,
@@ -345,6 +371,7 @@ model_check <- function(high_name, low_name, sample_size, repn) {
                      n.batch = n.batch,
                      batch.length = batch.length)
 
+  }
   # null_fit <- tPGOcc(occ.formula = ~ year,
   #                    det.formula = ~ 1,
   #                    data = list(y = obs_occ_array, occ.covs = occ.covs),
@@ -396,8 +423,8 @@ model_check <- function(high_name, low_name, sample_size, repn) {
 pwr_check <- model_check(high_name = "BRE_21", low_name = "BRE_1", sample_size = 40, repn = 1)
 
 set.seed(42)
-plan(multisession, workers = 15)
-power_check_list <- furrr::future_map(1:simn, function(x){ pmap(sim_map, model_check, repn = x)}, .options=furrr_options(seed = TRUE))
+plan(multisession, workers = 78)
+power_check_list <- map(1:simn, function(x){ furrr::future_pmap(sim_map, model_check, repn = x, .options=furrr_options(seed = TRUE))})
 
 power_check_df <- map_dfr(1:100, function(y){map_dfr(1:200, ~pluck(power_check_list, y, .x, "power_check"))})
 
