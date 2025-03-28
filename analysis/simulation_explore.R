@@ -116,12 +116,13 @@ sim_scenarios_emu <- sim_scenarios_emu %>%
 ########### Generate data sets ############
 ###########################################
 
+source(here::here("R/sim_dataset.R"))
 simn <- 100
 
 #single_rep <- purrr::pmap(sim_scenarios_emu %>% select(-sim_id), sim_dataset, nyear = nyear, n_vis = 2) %>% set_names(sim_scenarios_emu$sim_id)
 
 set.seed(42)
-plan(multisession, workers = 15)
+plan(multisession, workers = 2)
 sim_list <- furrr::future_map(1:simn, ~purrr::pmap(sim_scenarios_emu %>%
                                                      select(-sim_id, -n_samp), sim_dataset, nyear = nyear, n_vis = 2) %>%
                                 set_names(sim_scenarios_emu$sim_id),
