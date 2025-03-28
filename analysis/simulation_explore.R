@@ -86,21 +86,21 @@ sim_scenarios_emu <- bind_rows(sim_scenarios %>% mutate(emu = "BRE"),
   # get the columns in the right order
   select(sim_num, emu, psi, phi, sd_phi, sd_gamma, p, n = hex_count, perc_red)
 
-# number of samples taken for a landscape, proportional to size of
-# plausibly occupied area in each emu
-percent_samp <- c(0.05, 0.15, 0.30, 0.40, 0.50)
+# Let's get sample size of high quality hexes
+# If an emu has enough area, we want the max sample size to be 2500, otherwise max sample is entire high quality area
+sample_size_df <- emu_ratio %>%
+  filter(occupancy == "high") %>%
+  select(emu, hex_count) %>%
+  mutate(log_max_samp = ifelse(hex_count > 2500, ceiling(log(2500)), ceiling(log(hex_count)))) %>%
+  rowwise() %>%
+  mutate(log_samp = list(seq(2.3, log_max_samp, by = 0.5))) %>%
+  unnest(log_samp) %>%
+  mutate(samp_size = round(exp(log_samp)))
 
 emu_sample_sizes <- emu_ratio %>%
   filter(occupancy == "high") %>%
   select(emu, hex_count) %>%
-  group_by(emu) %>%
-  # expand to get a row for each sample size
-  slice(rep(row_number(), length(percent_samp))) %>%
-  mutate(percent_samp = percent_samp) %>%
-  ungroup() %>%
-  # get the number of the high quality hexes to be sampled, increase by a third
-  # to account for sites in low quality hexes
-  mutate(n_samp = as.integer(round(hex_count * percent_samp)*(4/3))) %>%
+  left_join(sample_size_df %>% select(emu, n_samp = samp_size)) %>%
   group_by(emu, n_samp) %>%
   # expand again to get a row for each simulation scenario
   slice(rep(row_number() , n_distinct(sim_scenarios$sim_num))) %>%
@@ -214,10 +214,12 @@ library(ggplot2)
 true_occ_plot_df <- true_occ_stats %>%
   group_by(phi, psi, p) %>%
   mutate(line_id = cur_group_id()) %>%
-  left_join(emu_sample_sizes %>% select(emu, n_samp, percent_samp))
+  left_join(emu_sample_sizes %>% select(emu, n_samp))
 
 true_occ_plot_df %>%
-  filter(percent_samp == 0.5) %>%
+  group_by(emu, n_samp) %>%
+  slice(1) %>%
+  #filter(percent_samp == 0.5) %>%
   ggplot(aes(x = time, y = mean)) +
   geom_ribbon(aes(ymin = lower, ymax = upper, fill = as.factor(line_id)), alpha = 0.3) +
   geom_line(aes(color = as.factor(line_id))) +
@@ -233,7 +235,8 @@ true_occ_plot_df %>%
   geom_hline(yintercept = 0.3225, linetype = "dotted")
 
 true_occ_plot_df %>%
-  filter(percent_samp == 0.5) %>%
+  group_by(emu, n_samp) %>%
+  slice(1) %>%
   filter(psi == 0.03) %>%
   ggplot(aes(x = time, y = mean)) +
   geom_ribbon(aes(ymin = lower, ymax = upper, fill = as.factor(line_id)), alpha = 0.3) +
@@ -277,16 +280,16 @@ model_check <- function(high_name, low_name, sample_size, repn) {
 
   print(c(high_name, repn))
 
-  # if we have enough low quality samples, this is the ratio
-  low_n = round(sample_size*0.25)
-  high_n = round(sample_size*0.75)
-
   low_obs <- pluck(sim_list_emu, low_name, repn, "obs_occ") %>% mutate(landtype = "low")
   high_obs <- pluck(sim_list_emu, high_name, repn, "obs_occ") %>% mutate(landtype = "high")
 
+  high_n = sample_size
+  # if we have enough low quality samples, this is the ratio
+  high_n = sample_size
+  low_n = round(high_n*(1/3))
+
   if(low_n > n_distinct(low_obs$site_id)){
     low_n = n_distinct(low_obs$site_id)
-    high_n = sample_size - low_n
   }
 
   obs_occ_df <- bind_rows(low_obs %>% filter(site_id %in% sample(unique(low_obs$site_id), low_n, replace = FALSE)),
@@ -398,15 +401,24 @@ power_check_list <- furrr::future_map(1:simn, function(x){ pmap(sim_map, model_c
 power_check_df <- map_dfr(1:100, function(y){map_dfr(1:200, ~pluck(power_check_list, y, .x, "power_check"))})
 
 power_plot_df <- power_check_df %>%
+  left_join(null_posterior %>% rename(null_success = check_dist)) %>%
+  #select(sim_id, simn, low_n, high_n, success, null_success) %>%
   group_by(sim_id) %>%
-  summarize(perc_success = sum(success)/simn) %>%
+  summarize(across(c(success, null_success), ~sum(.x)/simn)) %>%
   left_join(sim_scenarios_emu) %>%
   group_by(psi, p, phi) %>%
   mutate(line_id = cur_group_id()) %>%
   separate(sim_id, c("emu", "sim_num"), sep = "_", remove = FALSE)
 
 power_plot_df %>%
-  ggplot(aes(x = n_samp, y = perc_success)) +
+  ggplot(aes(x = n_samp, y = success)) +
+  geom_line(aes(color = as.factor(line_id))) +
+  facet_wrap(~emu, scales = "free") +
+  theme_classic() +
+  scale_color_discrete(name = "Scenario")
+
+power_plot_df %>%
+  ggplot(aes(x = n_samp, y = null_success)) +
   geom_line(aes(color = as.factor(line_id))) +
   facet_wrap(~emu, scales = "free") +
   theme_classic() +
