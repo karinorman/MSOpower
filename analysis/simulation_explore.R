@@ -345,19 +345,19 @@ model_check <- function(high_name, low_name, sample_size, repn) {
                      n.batch = n.batch,
                      batch.length = batch.length)
 
-  null_fit <- tPGOcc(occ.formula = ~ year,
-                     det.formula = ~ 1,
-                     data = list(y = obs_occ_array, occ.covs = occ.covs),
-                     inits = inits.list,
-                     priors = prior.list,
-                     n.omp.threads = 1,
-                     verbose = TRUE,
-                     n.report = 750,
-                     n.burn = n.burn,
-                     n.thin = n.thin,
-                     n.chains = n.chains,
-                     n.batch = n.batch,
-                     batch.length = batch.length)
+  # null_fit <- tPGOcc(occ.formula = ~ year,
+  #                    det.formula = ~ 1,
+  #                    data = list(y = obs_occ_array, occ.covs = occ.covs),
+  #                    inits = inits.list,
+  #                    priors = prior.list,
+  #                    n.omp.threads = 1,
+  #                    verbose = TRUE,
+  #                    n.report = 750,
+  #                    n.burn = n.burn,
+  #                    n.thin = n.thin,
+  #                    n.chains = n.chains,
+  #                    n.batch = n.batch,
+  #                    batch.length = batch.length)
 
   # get the posterior for the estimates
   post <- as.data.frame(test_fit$beta.samples) %>%
@@ -368,13 +368,13 @@ model_check <- function(high_name, low_name, sample_size, repn) {
            perc_change = (t10-t1)/t1) %>%
     mutate(sim_id = high_name, rep = repn)
 
-  post_null <- as.data.frame(null_fit$beta.samples) %>%
-    rename(intercept = `(Intercept)`) %>%
-    #mutate(across(everything(), plogis)) %>%
-    mutate(t10 = plogis(year*10 + intercept),
-           t1 = plogis(year + intercept),
-           perc_change = (t10-t1)/t1) %>%
-    mutate(sim_id = high_name, rep = repn)
+  # post_null <- as.data.frame(null_fit$beta.samples) %>%
+  #   rename(intercept = `(Intercept)`) %>%
+  #   #mutate(across(everything(), plogis)) %>%
+  #   mutate(t10 = plogis(year*10 + intercept),
+  #          t1 = plogis(year + intercept),
+  #          perc_change = (t10-t1)/t1) %>%
+  #   mutate(sim_id = high_name, rep = repn)
 
   true_trend <- true_occ %>%
     filter(sim_id == high_name, rep == repn) %>%
@@ -382,14 +382,15 @@ model_check <- function(high_name, low_name, sample_size, repn) {
     pull(perc_change)
 
   check_dist <- between(true_trend, min(post$perc_change),max(post$perc_change)) & !between(0, min(post$perc_change),max(post$perc_change))
-  check_dist_null <- between(true_trend, min(post_null$perc_change),max(post_null$perc_change)) & !between(0, min(post_null$perc_change),max(post_null$perc_change))
+  #check_dist_null <- between(true_trend, min(post_null$perc_change),max(post_null$perc_change)) & !between(0, min(post_null$perc_change),max(post_null$perc_change))
 
   return(list("power_check" = data.frame("sim_id" = high_name, "rep" = repn, "low_n" = low_n, "high_n" = high_n,
-             "true_perc_change" = true_trend, "est_perc_change_cat" = mean(post$perc_change), "est_perc_change_null" = mean(post_null$perc_change),
+             "true_perc_change" = true_trend, "est_perc_change" = mean(post$perc_change), #"est_perc_change_null" = mean(post_null$perc_change),
              "success" = check_dist, "samps_under" = sum(true_trend > post$perc_change),
              "samps_over" = sum(true_trend < post$perc_change)),
-             "posterior_cat" = post,
-             "posterior_null" = post_null))
+             "posterior" = post#,
+             #"posterior_null" = post_null
+             ))
 }
 
 pwr_check <- model_check(high_name = "BRE_21", low_name = "BRE_1", sample_size = 40, repn = 1)
