@@ -44,9 +44,7 @@ emu_ratio <- emu_veg %>%
     UNIT == "Southern Rocky Mountains" ~ "SRM",
     UNIT == "Upper Gila Mountains" ~ "UGM"
   )) %>%
-  ungroup() %>%
-  #let's make up a single cell of low quality in BRW so everything doesn't break
-  bind_rows(data.frame(UNIT = "Basin & Range - West", occupancy = "low", hex_count = 1, emu = "BRW"))
+  ungroup()
 
 
 ###########################################
@@ -84,7 +82,8 @@ sim_scenarios_emu <- bind_rows(sim_scenarios %>% mutate(emu = "BRE"),
               # tidyr::pivot_wider(names_from = occupancy, values_from = hex_count) %>%
               # rename(low_n = low, high_n = high)) %>%
   # get the columns in the right order
-  select(sim_num, emu, psi, phi, sd_phi, sd_gamma, p, n = hex_count, perc_red)
+  select(sim_num, emu, psi, phi, sd_phi, sd_gamma, p, n = hex_count, perc_red) %>%
+  filter(!is.na(n))
 
 # Let's get sample size of high quality hexes
 # If an emu has enough area, we want the max sample size to be 2500, otherwise max sample is entire high quality area
