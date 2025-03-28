@@ -16,7 +16,7 @@ emu_veg <- read.csv(here::here("data/EMU_veg_types.csv")) %>%
   mutate(occupancy = case_when(
     veg_type_landfire == "Madrean Lower Montane Pine-Oak Forest and Woodland" ~ "high",
     veg_type_landfire == "Southern Rocky Mountain Dry-Mesic Montane Mixed Conifer Forest and Woodland" ~ "high",
-    veg_type_landfire == "Southern Rocky Mountain Ponderosa Pine Woodland" ~ "low",
+    veg_type_landfire == "Southern Rocky Mountain Ponderosa Pine Woodland" ~ "high",
     veg_type_landfire == "Madrean Upper Montane Conifer-Oak Forest and Woodland" ~ "high",
     veg_type_landfire == "Rocky Mountain Subalpine Dry-Mesic Spruce-Fir Forest and Woodland" ~ "low",
     veg_type_landfire == "Rocky Mountain Aspen Forest and Woodland" ~ "low",
@@ -44,7 +44,9 @@ emu_ratio <- emu_veg %>%
     UNIT == "Southern Rocky Mountains" ~ "SRM",
     UNIT == "Upper Gila Mountains" ~ "UGM"
   )) %>%
-  ungroup()
+  ungroup() %>%
+  #let's make up a single cell of low quality in BRW so everything doesn't break
+  bind_rows(data.frame(UNIT = "Basin & Range - West", occupancy = "low", hex_count = 1, emu = "BRW"))
 
 
 ###########################################
@@ -61,7 +63,7 @@ n_vis = 2
 # get dataframe of all possible scenarios
 sim_scenarios <- data.frame(
   # these are the parameters that change, taken directly from Woods 2019
-  psi = c(0.03, 0.2, 0.43), phi = c(.6, .8, .8), p = c(0.4, 0.8, .8)) %>%
+  psi = c(0.03, 0.43, 0.6), phi = c(.6, .8, .8), p = c(0.4, 0.8, .8)) %>%
   # get all possible combinations
   tidyr::expand(psi, phi,p) %>%
   # and give each unique combination an ID
@@ -275,11 +277,17 @@ model_check <- function(high_name, low_name, sample_size, repn) {
 
   print(c(high_name, repn))
 
+  # if we have enough low quality samples, this is the ratio
   low_n = round(sample_size*0.25)
   high_n = round(sample_size*0.75)
 
   low_obs <- pluck(sim_list_emu, low_name, repn, "obs_occ") %>% mutate(landtype = "low")
   high_obs <- pluck(sim_list_emu, high_name, repn, "obs_occ") %>% mutate(landtype = "high")
+
+  if(low_n > n_distinct(low_obs$site_id)){
+    low_n = n_distinct(low_obs$site_id)
+    high_n = sample_size - low_n
+  }
 
   obs_occ_df <- bind_rows(low_obs %>% filter(site_id %in% sample(unique(low_obs$site_id), low_n, replace = FALSE)),
                           high_obs %>% filter(site_id %in% sample(unique(high_obs$site_id), high_n, replace = FALSE))) %>%
@@ -307,8 +315,8 @@ model_check <- function(high_name, low_name, sample_size, repn) {
   #fit_model
   n.chains <- 3
   n.thin <- 1
-  n.burn <- 2000
-  n.batch <- 120
+  n.burn <- 500
+  n.batch <- 30
   batch.length <- 25
 
 
@@ -327,7 +335,21 @@ model_check <- function(high_name, low_name, sample_size, repn) {
                      priors = prior.list,
                      n.omp.threads = 1,
                      verbose = TRUE,
-                     n.report = 1000,
+                     n.report = 750,
+                     n.burn = n.burn,
+                     n.thin = n.thin,
+                     n.chains = n.chains,
+                     n.batch = n.batch,
+                     batch.length = batch.length)
+
+  null_fit <- tPGOcc(occ.formula = ~ year,
+                     det.formula = ~ 1,
+                     data = list(y = obs_occ_array, occ.covs = occ.covs),
+                     inits = inits.list,
+                     priors = prior.list,
+                     n.omp.threads = 1,
+                     verbose = TRUE,
+                     n.report = 750,
                      n.burn = n.burn,
                      n.thin = n.thin,
                      n.chains = n.chains,
@@ -343,18 +365,28 @@ model_check <- function(high_name, low_name, sample_size, repn) {
            perc_change = (t10-t1)/t1) %>%
     mutate(sim_id = high_name, rep = repn)
 
+  post_null <- as.data.frame(null_fit$beta.samples) %>%
+    rename(intercept = `(Intercept)`) %>%
+    #mutate(across(everything(), plogis)) %>%
+    mutate(t10 = plogis(year*10 + intercept),
+           t1 = plogis(year + intercept),
+           perc_change = (t10-t1)/t1) %>%
+    mutate(sim_id = high_name, rep = repn)
+
   true_trend <- true_occ %>%
     filter(sim_id == high_name, rep == repn) %>%
     mutate(perc_change = (t10-t1)/t1) %>%
     pull(perc_change)
 
   check_dist <- between(true_trend, min(post$perc_change),max(post$perc_change)) & !between(0, min(post$perc_change),max(post$perc_change))
+  check_dist_null <- between(true_trend, min(post_null$perc_change),max(post_null$perc_change)) & !between(0, min(post_null$perc_change),max(post_null$perc_change))
 
-  return(list("power_check" = data.frame("sim_id" = high_name, "rep" = repn,
-             "true_perc_change" = true_trend, "est_perc_change" = mean(post$perc_change),
+  return(list("power_check" = data.frame("sim_id" = high_name, "rep" = repn, "low_n" = low_n, "high_n" = high_n,
+             "true_perc_change" = true_trend, "est_perc_change_cat" = mean(post$perc_change), "est_perc_change_null" = mean(post_null$perc_change),
              "success" = check_dist, "samps_under" = sum(true_trend > post$perc_change),
              "samps_over" = sum(true_trend < post$perc_change)),
-             "posterior" = post))
+             "posterior_cat" = post,
+             "posterior_null" = post_null))
 }
 
 pwr_check <- model_check(high_name = "BRE_21", low_name = "BRE_1", sample_size = 40, repn = 1)
@@ -377,4 +409,5 @@ power_plot_df %>%
   ggplot(aes(x = n_samp, y = perc_success)) +
   geom_line(aes(color = as.factor(line_id))) +
   facet_wrap(~emu, scales = "free") +
-  theme_classic()
+  theme_classic() +
+  scale_color_discrete(name = "Scenario")
