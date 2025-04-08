@@ -448,12 +448,19 @@ power_check_list <- furrr::future_pmap(sim_map_occ %>%
   
   #map(1:simn, function(x){ furrr::future_pmap(sim_map, model_check, repn = x, .options=furrr_options(seed = TRUE))})
 
+# get the pieces as two seperate dataframes
 power_check_df <- map_dfr(1:length(power_check_list), ~pluck(power_check_list, .x, "power_check"))
+power_check_post_df <- map_dfr(1:length(power_check_list), ~pluck(power_check_list, .x, "posterior"))
+
+# save out so we don't have to re run
+readr::write_csv(power_check_df, here::here("data/power_check_df.csv"))
+readr::write_csv(power_check_post_df, here::here("data/power_check_post_df.csv"))
 
 power_plot_df <- power_check_df %>%
- # left_join(null_posterior %>% rename(null_success = check_dist)) %>%
-  #select(sim_id, simn, low_n, high_n, success, null_success) %>%
-  group_by(sim_id) %>%
+  rowwise() %>%
+  mutate(total_n = sum(low_n, high_n, na.rm = TRUE)) %>%
+  ungroup() %>%
+  group_by(sim_id, total_n) %>%
   summarize(across(c(success), ~sum(.x)/simn)) %>%
   left_join(sim_scenarios_emu) %>%
   group_by(psi, p, phi) %>%
@@ -461,15 +468,10 @@ power_plot_df <- power_check_df %>%
   separate(sim_id, c("emu", "sim_num"), sep = "_", remove = FALSE)
 
 power_plot_df %>%
-  ggplot(aes(x = n_samp, y = success)) +
-  geom_line(aes(color = as.factor(line_id))) +
+  mutate(sim_type = paste(psi, phi, sep = "_")) %>%
+  ggplot(aes(x = total_n, y = success)) +
+  geom_line(aes(color = as.factor(sim_type), linetype = as.factor(p))) +
   facet_wrap(~emu, scales = "free") +
   theme_classic() +
-  scale_color_discrete(name = "Scenario")
-
-power_plot_df %>%
-  ggplot(aes(x = n_samp, y = null_success)) +
-  geom_line(aes(color = as.factor(line_id))) +
-  facet_wrap(~emu, scales = "free") +
-  theme_classic() +
-  scale_color_discrete(name = "Scenario")
+  scale_color_discrete(name = "Scenario") +
+  geom_hline(yintercept = 0.9, linetype = "dotted")
