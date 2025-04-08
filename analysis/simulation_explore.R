@@ -277,20 +277,38 @@ sim_map <- sim_scenarios_emu %>%
               separate(sim_id, c("emu"), sep = "_", remove = FALSE) %>%
               select(-psi) %>%
               rename(low_name = sim_id)) %>%
-  select(high_name, low_name, sample_size = n_samp)
+  select(high_name, low_name, sample_size = n_samp) %>%
+  group_by(high_name, sample_size) %>%
+  nest() %>%
+  mutate(rep = map(data, ~1:simn)) %>%
+  unnest(cols = c("data", "rep")) %>%
+  mutate(temp_id = paste(high_name, rep, sep = "_")) %>%
+  #group_by() %>%
+  nest(data = c(high_name, low_name, rep))
 
-model_check <- function(high_name, low_name, sample_size, repn) {
+sim_map_occ <- sim_map %>%
+  mutate(high_occ = map(data, ~pluck(sim_list_emu, unique(.$high_name), unique(.$rep), "obs_occ") %>% mutate(landtype = "high"))) %>%
+  mutate(low_occ = map(data, function(y){
+    if(is.na(unique(y$low_name))){
+      return(tibble())
+    } else(
+      return(pluck(sim_list_emu, unique(y$low_name), unique(y$rep), "obs_occ") %>% mutate(landtype = "low"))
+    )
+    })) %>%
+  unnest(cols = "data")
+
+model_check <- function(high_name, low_name, sample_size, repn, high_occ, low_occ) {
 
   print(c(high_name, repn))
 
   # define sample size for high_n, grab data
-  high_obs <- pluck(sim_list_emu, high_name, repn, "obs_occ") %>% mutate(landtype = "high")
+  high_obs <- high_occ
   high_n = sample_size
   
   if (!is.na(low_name)){
     
     low_n = round(high_n*(1/3))
-    low_obs <- pluck(sim_list_emu, low_name, repn, "obs_occ") %>% mutate(landtype = "low")
+    low_obs <- low_occ
     
     if(low_n > n_distinct(low_obs$site_id)){
       low_n = n_distinct(low_obs$site_id)
@@ -424,15 +442,19 @@ pwr_check <- model_check(high_name = "BRE_21", low_name = "BRE_1", sample_size =
 
 set.seed(42)
 plan(multisession, workers = 78)
-power_check_list <- map(1:simn, function(x){ furrr::future_pmap(sim_map, model_check, repn = x, .options=furrr_options(seed = TRUE))})
+power_check_list <- furrr::future_pmap(sim_map_occ %>% 
+                                         select(high_name, low_name, sample_size, repn = rep, high_occ, low_occ), model_check,
+                                       .options=furrr_options(seed = TRUE))
+  
+  #map(1:simn, function(x){ furrr::future_pmap(sim_map, model_check, repn = x, .options=furrr_options(seed = TRUE))})
 
-power_check_df <- map_dfr(1:100, function(y){map_dfr(1:200, ~pluck(power_check_list, y, .x, "power_check"))})
+power_check_df <- map_dfr(1:length(power_check_list), ~pluck(power_check_list, .x, "power_check"))
 
 power_plot_df <- power_check_df %>%
-  left_join(null_posterior %>% rename(null_success = check_dist)) %>%
+ # left_join(null_posterior %>% rename(null_success = check_dist)) %>%
   #select(sim_id, simn, low_n, high_n, success, null_success) %>%
   group_by(sim_id) %>%
-  summarize(across(c(success, null_success), ~sum(.x)/simn)) %>%
+  summarize(across(c(success), ~sum(.x)/simn)) %>%
   left_join(sim_scenarios_emu) %>%
   group_by(psi, p, phi) %>%
   mutate(line_id = cur_group_id()) %>%
