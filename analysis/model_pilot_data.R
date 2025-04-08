@@ -14,8 +14,8 @@ val_occ <- read.csv(here::here("data/top_conf_all_REID.csv")) %>%
 
 val_occ_day <- val_occ %>%
   select(forest, unit, date) %>%
-  distinct() %>%
-  mutate(occ = 1)
+  distinct()# %>%
+  #mutate(occ = 1)
 
 # the gila has detection at 7 units, the kaibab at 6
 val_occ_day %>% count(forest, unit)
@@ -28,7 +28,7 @@ kaibab_meta <- read.csv(here::here("data/bioacoustics.2022.Kaibab.metadata.csv")
   slice_head()
 
 # figure out detection history periods, get start and end of sampling period for each unit
-kaibab_meta %>%
+kaibab_meta_dates <- kaibab_meta %>%
   mutate(deploy_date = ymd(paste(cyear, deploy.month, deploy.day, sep = "-")),
          collect_date = ifelse(!is.na(visit2.month), paste(cyear, visit2.month, visit2.day, sep = "-"),
                                                          paste(cyear, visit1.month, visit1.day, sep = "-")),
@@ -37,6 +37,19 @@ kaibab_meta %>%
   select(-c(cyear, deploy.month, deploy.day,  visit2.month, visit2.day))
 
 
+date_ranges <- kaibab_meta_dates %>%
+  select(unit, deploy_date, collect_date) %>%
+  distinct() %>%
+  group_by(unit) %>%
+  nest() %>%
+  mutate(week_range_start = purrr::map(data, ~head(seq(.$deploy_date, .$collect_date, by = "1 week"), -1)),
+         week_range_end = purrr::map(data, ~tail(seq(.$deploy_date, .$collect_date, by = "1 week"), -1))) %>%
+  unnest(cols = c("data", "week_range_start", "week_range_end")) %>%
+  left_join(val_occ_day %>%
+              filter(forest == "kaibab") %>%
+              select(-forest) %>%
+              rename(obs_date = date)) %>%
+  mutate(occ = ifelse(obs_date >= deploy_date & obs_date <= collect_date, 1,))
 
 kaibab_detect <- val_occ_day %>%
   filter(forest == "kaibab") %>%
