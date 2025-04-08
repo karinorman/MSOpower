@@ -468,7 +468,7 @@ power_plot_df <- power_check_df %>%
   separate(sim_id, c("emu", "sim_num"), sep = "_", remove = FALSE)
 
 power_plot_df %>%
-  mutate(sim_type = paste(psi, phi, sep = "_")) %>%
+  mutate(sim_type = paste0("Psi = ", psi, ", Phi = ", phi)) %>%
   ggplot(aes(x = total_n, y = success)) +
   geom_line(aes(color = as.factor(sim_type), linetype = as.factor(p))) +
   facet_wrap(~emu, scales = "free") +
