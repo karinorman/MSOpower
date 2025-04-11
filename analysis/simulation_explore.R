@@ -79,8 +79,8 @@ sim_scenarios_emu <- bind_rows(sim_scenarios %>% mutate(emu = "BRE"),
   # get sample sizes for low and high occupancy for each emu
   left_join(emu_ratio %>%
               select(emu, occupancy, hex_count)) %>%
-              # tidyr::pivot_wider(names_from = occupancy, values_from = hex_count) %>%
-              # rename(low_n = low, high_n = high)) %>%
+  # tidyr::pivot_wider(names_from = occupancy, values_from = hex_count) %>%
+  # rename(low_n = low, high_n = high)) %>%
   # get the columns in the right order
   select(sim_num, emu, psi, phi, sd_phi, sd_gamma, p, n = hex_count, perc_red) %>%
   filter(!is.na(n))
@@ -125,11 +125,11 @@ simn <- 100
 #single_rep <- purrr::pmap(sim_scenarios_emu %>% select(-sim_id), sim_dataset, nyear = nyear, n_vis = 2) %>% set_names(sim_scenarios_emu$sim_id)
 
 set.seed(42)
-plan(multisession, workers = 15)
+plan(multisession, workers = 78)
 sim_list <- map(1:simn, ~furrr::future_pmap(sim_scenarios_emu %>%
-                                                     select(-sim_id, -n_samp), sim_dataset, nyear = nyear, n_vis = 2) %>%
-                                set_names(sim_scenarios_emu$sim_id),
-                              .options=furrr_options(seed = TRUE)) %>%
+                                              select(-sim_id, -n_samp), sim_dataset, nyear = nyear, n_vis = 2) %>%
+                  set_names(sim_scenarios_emu$sim_id),
+                .options=furrr_options(seed = TRUE)) %>%
   set_names(paste0("rep", 1:simn))
 
 # reorder so top level of nested list is a sim scenario
@@ -277,20 +277,38 @@ sim_map <- sim_scenarios_emu %>%
               separate(sim_id, c("emu"), sep = "_", remove = FALSE) %>%
               select(-psi) %>%
               rename(low_name = sim_id)) %>%
-  select(high_name, low_name, sample_size = n_samp)
+  select(high_name, low_name, sample_size = n_samp) %>%
+  group_by(high_name, sample_size) %>%
+  nest() %>%
+  mutate(rep = map(data, ~1:simn)) %>%
+  unnest(cols = c("data", "rep")) %>%
+  mutate(temp_id = paste(high_name, rep, sep = "_")) %>%
+  #group_by() %>%
+  nest(data = c(high_name, low_name, rep))
 
-model_check <- function(high_name, low_name, sample_size, repn) {
+sim_map_occ <- sim_map %>%
+  mutate(high_occ = map(data, ~pluck(sim_list_emu, unique(.$high_name), unique(.$rep), "obs_occ") %>% mutate(landtype = "high"))) %>%
+  mutate(low_occ = map(data, function(y){
+    if(is.na(unique(y$low_name))){
+      return(tibble())
+    } else(
+      return(pluck(sim_list_emu, unique(y$low_name), unique(y$rep), "obs_occ") %>% mutate(landtype = "low"))
+    )
+  })) %>%
+  unnest(cols = "data")
+
+model_check <- function(high_name, low_name, sample_size, repn, high_occ, low_occ) {
 
   print(c(high_name, repn))
 
   # define sample size for high_n, grab data
-  high_obs <- pluck(sim_list_emu, high_name, repn, "obs_occ") %>% mutate(landtype = "high")
+  high_obs <- high_occ
   high_n = sample_size
 
   if (!is.na(low_name)){
 
     low_n = round(high_n*(1/3))
-    low_obs <- pluck(sim_list_emu, low_name, repn, "obs_occ") %>% mutate(landtype = "low")
+    low_obs <- low_occ
 
     if(low_n > n_distinct(low_obs$site_id)){
       low_n = n_distinct(low_obs$site_id)
@@ -357,19 +375,19 @@ model_check <- function(high_name, low_name, sample_size, repn) {
                        batch.length = batch.length)
   } else{
 
-  test_fit <- tPGOcc(occ.formula = ~ year + landtype,
-                     det.formula = ~ 1,
-                     data = list(y = obs_occ_array, occ.covs = occ.covs),
-                     inits = inits.list,
-                     priors = prior.list,
-                     n.omp.threads = 1,
-                     verbose = TRUE,
-                     n.report = 750,
-                     n.burn = n.burn,
-                     n.thin = n.thin,
-                     n.chains = n.chains,
-                     n.batch = n.batch,
-                     batch.length = batch.length)
+    test_fit <- tPGOcc(occ.formula = ~ year + landtype,
+                       det.formula = ~ 1,
+                       data = list(y = obs_occ_array, occ.covs = occ.covs),
+                       inits = inits.list,
+                       priors = prior.list,
+                       n.omp.threads = 1,
+                       verbose = TRUE,
+                       n.report = 750,
+                       n.burn = n.burn,
+                       n.thin = n.thin,
+                       n.chains = n.chains,
+                       n.batch = n.batch,
+                       batch.length = batch.length)
 
   }
   # null_fit <- tPGOcc(occ.formula = ~ year,
@@ -412,42 +430,48 @@ model_check <- function(high_name, low_name, sample_size, repn) {
   #check_dist_null <- between(true_trend, min(post_null$perc_change),max(post_null$perc_change)) & !between(0, min(post_null$perc_change),max(post_null$perc_change))
 
   return(list("power_check" = data.frame("sim_id" = high_name, "rep" = repn, "low_n" = low_n, "high_n" = high_n,
-             "true_perc_change" = true_trend, "est_perc_change" = mean(post$perc_change), #"est_perc_change_null" = mean(post_null$perc_change),
-             "success" = check_dist, "samps_under" = sum(true_trend > post$perc_change),
-             "samps_over" = sum(true_trend < post$perc_change)),
-             "posterior" = post#,
-             #"posterior_null" = post_null
-             ))
+                                         "true_perc_change" = true_trend, "est_perc_change" = mean(post$perc_change), #"est_perc_change_null" = mean(post_null$perc_change),
+                                         "success" = check_dist, "samps_under" = sum(true_trend > post$perc_change),
+                                         "samps_over" = sum(true_trend < post$perc_change)),
+              "posterior" = post#,
+              #"posterior_null" = post_null
+  ))
 }
 
 pwr_check <- model_check(high_name = "BRE_21", low_name = "BRE_1", sample_size = 40, repn = 1)
 
 set.seed(42)
-plan(multisession, workers = 15)
-power_check_list <- map(1:simn, function(x){ furrr::future_pmap(sim_map, model_check, repn = x, .options=furrr_options(seed = TRUE))})
+plan(multisession, workers = 78)
+power_check_list <- furrr::future_pmap(sim_map_occ %>%
+                                         select(high_name, low_name, sample_size, repn = rep, high_occ, low_occ), model_check,
+                                       .options=furrr_options(seed = TRUE))
 
-power_check_df <- map_dfr(1:100, function(y){map_dfr(1:200, ~pluck(power_check_list, y, .x, "power_check"))})
+#map(1:simn, function(x){ furrr::future_pmap(sim_map, model_check, repn = x, .options=furrr_options(seed = TRUE))})
+
+# get the pieces as two seperate dataframes
+power_check_df <- map_dfr(1:length(power_check_list), ~pluck(power_check_list, .x, "power_check"))
+power_check_post_df <- map_dfr(1:length(power_check_list), ~pluck(power_check_list, .x, "posterior"))
+
+# save out so we don't have to re run
+readr::write_csv(power_check_df, here::here("data/power_check_df.csv"))
+readr::write_csv(power_check_post_df, here::here("data/power_check_post_df.csv"))
 
 power_plot_df <- power_check_df %>%
-  left_join(null_posterior %>% rename(null_success = check_dist)) %>%
-  #select(sim_id, simn, low_n, high_n, success, null_success) %>%
-  group_by(sim_id) %>%
-  summarize(across(c(success, null_success), ~sum(.x)/simn)) %>%
+  rowwise() %>%
+  mutate(total_n = sum(low_n, high_n, na.rm = TRUE)) %>%
+  ungroup() %>%
+  group_by(sim_id, total_n) %>%
+  summarize(across(c(success), ~sum(.x)/simn)) %>%
   left_join(sim_scenarios_emu) %>%
   group_by(psi, p, phi) %>%
   mutate(line_id = cur_group_id()) %>%
   separate(sim_id, c("emu", "sim_num"), sep = "_", remove = FALSE)
 
 power_plot_df %>%
-  ggplot(aes(x = n_samp, y = success)) +
-  geom_line(aes(color = as.factor(line_id))) +
+  mutate(sim_type = paste0("Psi = ", psi, ", Phi = ", phi)) %>%
+  ggplot(aes(x = total_n, y = success)) +
+  geom_line(aes(color = as.factor(sim_type), linetype = as.factor(p))) +
   facet_wrap(~emu, scales = "free") +
   theme_classic() +
-  scale_color_discrete(name = "Scenario")
-
-power_plot_df %>%
-  ggplot(aes(x = n_samp, y = null_success)) +
-  geom_line(aes(color = as.factor(line_id))) +
-  facet_wrap(~emu, scales = "free") +
-  theme_classic() +
-  scale_color_discrete(name = "Scenario")
+  scale_color_discrete(name = "Scenario") +
+  geom_hline(yintercept = 0.9, linetype = "dotted")
