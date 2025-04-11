@@ -8,7 +8,7 @@ library(terra)
 library(tidyterra)
 library(ggplot2)
 library(sf)
-library(dggridR)
+
 
 emus <- st_read(here::here("data/MSO_EMUs/MSO_EMUs.shp")) %>%
   select(UNIT) %>%
@@ -281,7 +281,7 @@ small_patch <- sample_poly_area %>%
 # final sample frame,
 grid_sample_frame <- sample_grids %>%
   mutate(include_patch = as.factor(ifelse(ID %in% small_patch$grid_id, "no", "yes"))) %>%
-  select(ID, UNIT, veg_type_landfire = sample_frame, habitat_2000, habitat_2022, mso_habitat_type, mso_percent_habitat, include_patch)
+  select(ID, UNIT, veg_type_landfire = sample_frame_veg, habitat_2000, habitat_2022, mso_habitat_type, mso_percent_habitat, include_patch)
 
 # need to assign hexes that match to more than one EMU to the dominant EMU
 overlap_geom <- grid_sample_frame %>%
@@ -369,12 +369,39 @@ emu_zoom_plt <- ggplot() +
 
 ggsave(here::here("figures/emu_zoom.jpeg"), emu_zoom_plt)
 
-# need to get emu_veg from the sim script for this
-# occupancy_plt <- ggplot() +
-#   geom_spatvector(data = emus_proj, color = "black", fill = "transparent") +
-#   geom_spatvector(data = veg_grid %>% filter(include_patch == "yes"), aes(fill = occupancy, color = occupancy)) +
-#   scale_fill_manual(values = list("high" = "#F6AE2D", "low" = "#82A6B1")) +
-#   scale_color_manual(values = list("high" = "#F6AE2D", "low" = "#82A6B1")) +
-#   theme_void()
-#
-# ggsave(here::here("figures/occupancy_map.jpeg"), occupancy_plt)
+# Plot high occupancy areas against sampling frame
+# real world vegtypes for each emu
+emu_veg <- read.csv(here::here("data/EMU_veg_types.csv")) %>%
+  # let's say which we think has high or low occupancy
+  mutate(occupancy = case_when(
+    veg_type_landfire == "Madrean Lower Montane Pine-Oak Forest and Woodland" ~ "high",
+    veg_type_landfire == "Southern Rocky Mountain Dry-Mesic Montane Mixed Conifer Forest and Woodland" ~ "high",
+    veg_type_landfire == "Southern Rocky Mountain Ponderosa Pine Woodland" ~ "high",
+    veg_type_landfire == "Madrean Upper Montane Conifer-Oak Forest and Woodland" ~ "high",
+    veg_type_landfire == "Rocky Mountain Subalpine Dry-Mesic Spruce-Fir Forest and Woodland" ~ "low",
+    veg_type_landfire == "Rocky Mountain Aspen Forest and Woodland" ~ "low",
+    veg_type_landfire == "Inter-Mountain Basins Aspen-Mixed Conifer Forest and Woodland" ~ "low",
+    veg_type_landfire == "Southern Rocky Mountain Ponderosa Pine Savanna" ~ "low",
+    veg_type_landfire == "Inter-Mountain Basins Subalpine Limber-Bristlecone Pine Woodland" ~ "low",
+    veg_type_landfire == "Rocky Mountain Bigtooth Maple Ravine Woodland" ~ "low",
+    veg_type_landfire == "Rocky Mountain Subalpine Mesic-Wet Spruce-Fir Forest and Woodland" ~ "low",
+    veg_type_landfire == "Rocky Mountain Subalpine-Montane Riparian Woodland" ~ "low",
+    veg_type_landfire == "Rocky Mountain Lodgepole Pine Forest" ~ "low",
+    veg_type_landfire == "Rocky Mountain Subalpine-Montane Limber-Bristlecone Pine Woodland" ~ "low",
+    veg_type_landfire == "Rocky Mountain Lodgepole Pine Forest" ~ "low",
+    veg_type_landfire == "Rocky Mountain Subalpine-Montane Limber-Bristlecone Pine Woodland" ~ "low",
+    veg_type_landfire == "Southern Rocky Mountain Mesic Montane Mixed Conifer Forest and Woodland" ~ "high",
+    .default = NA
+  ))
+
+veg_grid <- grid_sample_frame %>% left_join(emu_veg)
+
+occupancy_plt <- ggplot() +
+  geom_spatvector(data = emus_proj, color = "black", fill = "transparent") +
+  geom_spatvector(data = veg_grid %>% filter(include_patch == "yes"), aes(fill = occupancy, color = occupancy)) +
+  scale_fill_manual(values = list("high" = "#F6AE2D", "low" = "#82A6B1")) +
+  scale_color_manual(values = list("high" = "#F6AE2D", "low" = "#82A6B1")) +
+  geom_spatvector(data = pacs, color = "red")
+  theme_void()
+
+ggsave(here::here("figures/occupancy_map.jpeg"), occupancy_plt)
