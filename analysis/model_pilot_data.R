@@ -1,6 +1,7 @@
 library(dplyr)
 library(tidyr)
 library(lubridate)
+library(spOccupancy)
 
 ##########################################
 ### Processing calls validated by Dana ###
@@ -25,7 +26,9 @@ val_occ_day %>% count(forest, unit)
 kaibab_meta <- read.csv(here::here("data/bioacoustics.2022.Kaibab.metadata.csv")) %>%
   pivot_longer(cols = c(deploy.swiftID, visit1.swiftID), names_to = "visit", values_to = "unit") %>%
   group_by(unit) %>%
-  slice_head()
+  slice_head() %>%
+  ungroup() %>%
+  filter(!is.na(unit))
 
 # figure out detection history periods, get start and end of sampling period for each unit
 kaibab_meta_dates <- kaibab_meta %>%
@@ -38,27 +41,64 @@ kaibab_meta_dates <- kaibab_meta %>%
 
 
 date_ranges <- kaibab_meta_dates %>%
-  select(unit, deploy_date, collect_date) %>%
+  select(pointID, unit, deploy_date, collect_date) %>%
   distinct() %>%
   group_by(unit) %>%
   nest() %>%
-  mutate(week_range_start = purrr::map(data, ~head(seq(.$deploy_date, .$collect_date, by = "1 week"), -1)),
-         week_range_end = purrr::map(data, ~tail(seq(.$deploy_date, .$collect_date, by = "1 week"), -1))) %>%
+  mutate(week_range_start = purrr::map(data, ~seq(.$deploy_date, .$collect_date, by = "2 week")),
+         week_range_end = purrr::map(data, ~c(tail(seq(.$deploy_date, .$collect_date, by = "2 week"), -1), .$collect_date))) %>%
   unnest(cols = c("data", "week_range_start", "week_range_end")) %>%
+  filter(week_range_start != week_range_end) %>%
+  select(-deploy_date, -collect_date) %>%
   left_join(val_occ_day %>%
               filter(forest == "kaibab") %>%
               select(-forest) %>%
               rename(obs_date = date)) %>%
-  mutate(occ = ifelse(obs_date >= deploy_date & obs_date <= collect_date, 1,))
+  mutate(occ = ifelse(obs_date >= week_range_start & obs_date <= week_range_end, 1, 0),
+         occ = ifelse(is.na(obs_date), 0, occ)) %>%
+  group_by(pointID, week_range_start, week_range_end) %>%
+  summarize(occ = sum(occ, na.rm = TRUE)) %>%
+  ungroup()
 
-kaibab_detect <- val_occ_day %>%
-  filter(forest == "kaibab") %>%
-  select(-forest) %>%
-  left_join(kaibab_meta)
+kaibab_detect_hist <- date_ranges %>%
+  select(-week_range_start, - week_range_end) %>%
+  group_by(pointID) %>%
+  mutate(time = paste0("t", row_number())) %>%
+  pivot_wider(names_from = "time", values_from = "occ") %>%
+  ungroup()
+
+#### Let's try to fit a model ####
+
+n.chains <- 3
+n.samples <- 3000
+n.thin <- 1
+n.burn <- 2000
+
+kaibab_occ_array <- kaibab_detect_hist %>%
+  select(-pointID) %>%
+  as.matrix()
+
+z.init <- apply(kaibab_occ_array, c(1, 2), function(a) as.numeric(sum(a, na.rm = TRUE) > 0))
+
+inits.list <- list(beta = 0,
+                   alpha = 0)#,
+                   #z = z.init)
+
+prior.list <- list(beta.normal = list(mean = 0, var = 2.72),
+                   alpha.normal = list(mean = 0, var = 2.72))
 
 
+kaibab_fit <- PGOcc(occ.formula = ~ 1,
+                   det.formula = ~ 1,
+                   data = list(y = kaibab_occ_array),
+                   inits = inits.list,
+                   priors = prior.list,
+                   n.omp.threads = 1,
+                   verbose = TRUE,
+                   n.report = 750,
+                   n.burn = n.burn,
+                   n.thin = n.thin,
+                   n.chains = n.chains,
+                   n.samples = n.samples)
 
 
-
-
-gila_meta <- read.csv(here::here("data/bioacoustics.2022.Gila.metadata.csv"))
