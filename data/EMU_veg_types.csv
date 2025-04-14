@@ -1,15 +1,18 @@
 UNIT,veg_type_landfire,hex_num
 Basin & Range - East,Inter-Mountain Basins Aspen-Mixed Conifer Forest and Woodland,43
 Basin & Range - East,Madrean Lower Montane Pine-Oak Forest and Woodland,1
-Basin & Range - East,Madrean Upper Montane Conifer-Oak Forest and Woodland,22
+Basin & Range - East,Madrean Pinyon-Juniper Woodland,1637
+Basin & Range - East,Madrean Upper Montane Conifer-Oak Forest and Woodland,23
 Basin & Range - East,Rocky Mountain Aspen Forest and Woodland,19
 Basin & Range - East,Rocky Mountain Subalpine Dry-Mesic Spruce-Fir Forest and Woodland,2
-Basin & Range - East,Southern Rocky Mountain Dry-Mesic Montane Mixed Conifer Forest and Woodland,37
+Basin & Range - East,Southern Rocky Mountain Dry-Mesic Montane Mixed Conifer Forest and Woodland,39
 Basin & Range - East,Southern Rocky Mountain Mesic Montane Mixed Conifer Forest and Woodland,1
-Basin & Range - East,Southern Rocky Mountain Ponderosa Pine Woodland,658
-Basin & Range - West,Madrean Lower Montane Pine-Oak Forest and Woodland,195
+Basin & Range - East,Southern Rocky Mountain Ponderosa Pine Woodland,680
+Basin & Range - West,Madrean Lower Montane Pine-Oak Forest and Woodland,219
+Basin & Range - West,Madrean Pinyon-Juniper Woodland,2728
+Basin & Range - West,Madrean Upper Montane Conifer-Oak Forest and Woodland,1
 Basin & Range - West,Southern Rocky Mountain Dry-Mesic Montane Mixed Conifer Forest and Woodland,13
-Basin & Range - West,Southern Rocky Mountain Ponderosa Pine Woodland,121
+Basin & Range - West,Southern Rocky Mountain Ponderosa Pine Woodland,137
 Colorado Plateau,Inter-Mountain Basins Aspen-Mixed Conifer Forest and Woodland,321
 Colorado Plateau,Inter-Mountain Basins Subalpine Limber-Bristlecone Pine Woodland,45
 Colorado Plateau,Rocky Mountain Aspen Forest and Woodland,1549
@@ -29,11 +32,12 @@ Southern Rocky Mountains,Southern Rocky Mountain Dry-Mesic Montane Mixed Conifer
 Southern Rocky Mountains,Southern Rocky Mountain Mesic Montane Mixed Conifer Forest and Woodland,820
 Southern Rocky Mountains,Southern Rocky Mountain Ponderosa Pine Savanna,6
 Southern Rocky Mountains,Southern Rocky Mountain Ponderosa Pine Woodland,5731
-Upper Gila Mountains,Madrean Lower Montane Pine-Oak Forest and Woodland,149
+Upper Gila Mountains,Madrean Lower Montane Pine-Oak Forest and Woodland,164
+Upper Gila Mountains,Madrean Pinyon-Juniper Woodland,3436
 Upper Gila Mountains,Madrean Upper Montane Conifer-Oak Forest and Woodland,77
 Upper Gila Mountains,Rocky Mountain Aspen Forest and Woodland,16
 Upper Gila Mountains,Rocky Mountain Subalpine Dry-Mesic Spruce-Fir Forest and Woodland,97
 Upper Gila Mountains,Southern Rocky Mountain Dry-Mesic Montane Mixed Conifer Forest and Woodland,6
 Upper Gila Mountains,Southern Rocky Mountain Mesic Montane Mixed Conifer Forest and Woodland,2
 Upper Gila Mountains,Southern Rocky Mountain Ponderosa Pine Savanna,4
-Upper Gila Mountains,Southern Rocky Mountain Ponderosa Pine Woodland,4749
+Upper Gila Mountains,Southern Rocky Mountain Ponderosa Pine Woodland,4767

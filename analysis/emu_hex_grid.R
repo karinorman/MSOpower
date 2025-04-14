@@ -166,7 +166,7 @@ grid_attr_habitat <- grid_attr_habitat %>%
    mutate(across(starts_with("sample_frame"), ~replace(., sample_frame_type %in%  c("Agriculture", "Barren", "Developed", "Sparse", "Water", "Snow-Ice"), NA))) %>%
   # Identify tree veg types, and whether or not they're included in the sample frame
   mutate(mso_habitat_type = case_when(
-    sample_frame_veg == "Madrean Pinyon-Juniper Woodland" ~ "no",
+    sample_frame_veg == "Madrean Pinyon-Juniper Woodland" ~ "yes",
     sample_frame_veg == "Madrean Encinal" ~ "no",
     sample_frame_veg == "Interior West Ruderal Riparian Forest" ~ "no",
     sample_frame_veg == "Madrean Lower Montane Pine-Oak Forest and Woodland" ~ "yes",
@@ -374,6 +374,7 @@ ggsave(here::here("figures/emu_zoom.jpeg"), emu_zoom_plt)
 emu_veg <- read.csv(here::here("data/EMU_veg_types.csv")) %>%
   # let's say which we think has high or low occupancy
   mutate(occupancy = case_when(
+    veg_type_landfire == "Madrean Pinyon-Juniper Woodland" ~ "low",
     veg_type_landfire == "Madrean Lower Montane Pine-Oak Forest and Woodland" ~ "high",
     veg_type_landfire == "Southern Rocky Mountain Dry-Mesic Montane Mixed Conifer Forest and Woodland" ~ "high",
     veg_type_landfire == "Southern Rocky Mountain Ponderosa Pine Woodland" ~ "high",
@@ -401,7 +402,7 @@ occupancy_plt <- ggplot() +
   geom_spatvector(data = veg_grid %>% filter(include_patch == "yes"), aes(fill = occupancy, color = occupancy)) +
   scale_fill_manual(values = list("high" = "#F6AE2D", "low" = "#82A6B1")) +
   scale_color_manual(values = list("high" = "#F6AE2D", "low" = "#82A6B1")) +
-  geom_spatvector(data = pacs, color = "red")
+  geom_spatvector(data = pacs, color = "red") +
   theme_void()
 
 ggsave(here::here("figures/occupancy_map.jpeg"), occupancy_plt)
