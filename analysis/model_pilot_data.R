@@ -101,4 +101,5 @@ kaibab_fit <- PGOcc(occ.formula = ~ 1,
                    n.chains = n.chains,
                    n.samples = n.samples)
 
+gila_meta <- read.csv(here::here("data/bioacoustics.2022.Gila.metadata.csv"))
 
