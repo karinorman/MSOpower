@@ -397,8 +397,14 @@ emu_veg <- read.csv(here::here("data/EMU_veg_types.csv")) %>%
 
 veg_grid <- grid_sample_frame %>% left_join(emu_veg)
 
+# boundary_states <- rnaturalearth::ne_states(iso_a2 = "US") %>%
+#   vect() %>%
+#   project("epsg:4326") %>%
+#   filter(name %in% c("Arizona", "Colorado", "New Mexico", "Utah"))
+
 occupancy_plt <- ggplot() +
-  geom_spatvector(data = emus_proj, color = "black", fill = "transparent") +
+  geom_spatvector(data = emus_proj, color = "grey", fill = "transparent") +
+  #geom_spatvector(data = boundary_states, color = "black", fill = "transparent") +
   geom_spatvector(data = veg_grid %>% filter(include_patch == "yes"), aes(fill = occupancy, color = occupancy)) +
   scale_fill_manual(values = list("high" = "#F6AE2D", "low" = "#82A6B1")) +
   scale_color_manual(values = list("high" = "#F6AE2D", "low" = "#82A6B1")) +
