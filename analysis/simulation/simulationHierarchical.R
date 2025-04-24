@@ -69,6 +69,9 @@ sim_scenarios <- data.frame(
   # these are the same for all scenarios right now, sd's from Wood 2019, psi1_low kinda made up
   mutate(sd_phi = 0.04, sd_gamma = 0.01, perc_red = 0.25)
 
+high_hex_count <- emu_ratio %>% filter(occupancy == "high") %>% pull(hex_count) %>% sum()
+sample_sizes <- seq(log(100), log(high_hex_count/2), by = 0.5) %>% exp() %>% round()
+
 # get scenarios, one for each emu
 sim_scenarios_emu <- bind_rows(sim_scenarios %>% mutate(emu = "BRE"),
                                sim_scenarios %>% mutate(emu = "BRW"),
@@ -83,10 +86,11 @@ sim_scenarios_emu <- bind_rows(sim_scenarios %>% mutate(emu = "BRE"),
   # get the columns in the right order
   select(sim_num, emu, psi, phi, sd_phi, sd_gamma, p, n = hex_count, perc_red) %>%
   filter(!is.na(n)) %>%
+  group_by(emu, sim_num) %>%
+  slice(rep(row_number(), length(sample_sizes))) %>% mutate(total_samp = sample_sizes) %>%
   group_by(emu) %>%
   mutate(sim_num = row_number()) %>%
-  unite("sim_id", emu, sim_num) %>%
-  mutate(n_samp = 370)
+  unite("sim_id", emu, sim_num)
 
 # let's figure out relative area of each emu and total area
 emu_ratio %>%
@@ -95,17 +99,6 @@ emu_ratio %>%
   mutate(total_hex = sum(hex_count)) %>%
   mutate(proportion = hex_count/total_hex)
 
-# sample_size_df <- emu_ratio %>%
-#   filter(occupancy == "high") %>%
-#   select(emu, hex_count) %>%
-#   mutate(log_max_samp = ifelse(hex_count > 2500, ceiling(log(2500)), log(hex_count))) %>%
-#   rowwise() %>%
-#   mutate(log_samp = list(seq(2.3, log_max_samp, by = 0.5))) %>%
-#   unnest(log_samp) %>%
-#   mutate(samp_size = round(exp(log_samp))) %>%
-#   # for smaller emu's, add a sample that's 100% of hexes
-#   bind_rows(tibble(emu = "BRE", hex_count = 719, samp_size = 719),
-#             tibble(emu = "BRW", hex_count = 329, samp_size = 329),)
 
 ###########################################
 ########### Generate data sets ############
@@ -119,7 +112,7 @@ simn <- 5
 set.seed(42)
 plan(multisession, workers = 10)
 sim_list <- map(1:simn, ~furrr::future_pmap(sim_scenarios_emu %>%
-                                              select(-sim_id, -n_samp), sim_dataset, nyear = nyear, n_vis = 2) %>%
+                                              select(-sim_id, -total_samp), sim_dataset, nyear = nyear, n_vis = 2) %>%
                   set_names(sim_scenarios_emu$sim_id),
                 .options=furrr_options(seed = TRUE)) %>%
   set_names(paste0("rep", 1:simn))
@@ -140,32 +133,32 @@ true_occ <- map_dfr(sim_scenarios_emu$sim_id, function(emu){
     mutate(sim_id = emu)
 })
 
-true_occ_stats <- true_occ %>%
-  pivot_longer(starts_with("t"), names_to = "time", values_to = "occ") %>%
-  select(-rep) %>%
-  group_by(sim_id, time) %>%
-  summarize(mean = mean(occ),
-            lower = mean(occ) - qt(1- 0.05/2, (n() - 1))*sd(occ)/sqrt(n()),
-            upper = mean(occ) + qt(1- 0.05/2, (n() - 1))*sd(occ)/sqrt(n())) %>%
-  ungroup() %>%
-  separate(sim_id, c("emu", "sim_num"), sep = "_", remove = FALSE) %>%
-  mutate(time = as.numeric(stringr::str_remove(time, "t"))) %>%
-  left_join(sim_scenarios_emu)
+# true_occ_stats <- true_occ %>%
+#   pivot_longer(starts_with("t"), names_to = "time", values_to = "occ") %>%
+#   select(-rep) %>%
+#   group_by(sim_id, time) %>%
+#   summarize(mean = mean(occ),
+#             lower = mean(occ) - qt(1- 0.05/2, (n() - 1))*sd(occ)/sqrt(n()),
+#             upper = mean(occ) + qt(1- 0.05/2, (n() - 1))*sd(occ)/sqrt(n())) %>%
+#   ungroup() %>%
+#   separate(sim_id, c("emu", "sim_num"), sep = "_", remove = FALSE) %>%
+#   mutate(time = as.numeric(stringr::str_remove(time, "t"))) %>%
+#   left_join(sim_scenarios_emu)
 
 ### Let's get the dataset aggregated across emu's
 # map high occupancy sims to their low occupancy counterpart
 sim_map <- sim_scenarios_emu %>%
-  select(sim_id, psi, phi, p, n_samp) %>%
+  select(sim_id, psi, phi, p, total_samp) %>%
   filter(psi != 0.03) %>%
   separate(sim_id, c("emu"), sep = "_", remove = FALSE) %>%
   rename(high_name = sim_id) %>%
   left_join(sim_scenarios_emu %>%
-              select(sim_id, psi, phi, p, n_samp) %>%
+              select(sim_id, psi, phi, p, total_samp) %>%
               filter(psi == 0.03) %>%
               separate(sim_id, c("emu"), sep = "_", remove = FALSE) %>%
               select(-psi) %>%
-              rename(low_name = sim_id)) %>%
-  group_by(phi, p, psi, n_samp) %>%
+              rename(low_name = sim_id), by = c("emu", "total_samp", "phi", "p")) %>%
+  group_by(phi, p, psi, total_samp) %>%
   mutate(scenario_id = cur_group_id())
 
 
@@ -218,26 +211,29 @@ obs_occ <- map_dfr(unique(sim_reps_df$scenario_id), function(scenario){
               mutate(emu_sim_name = .x, rep = simn )) %>%
       mutate(scenario_id = scenario_id)
   }, scenario_id = scenario)
-})
-
-# let's fit a hierarchical model using sample data
-model_data <- obs_occ %>%
-  filter(sim_id == 1, rep == 1) %>%
-  # we need a site id that's unique for the whole sample frame, not just within an EMU
-  #separate_wider_delim(emu_sim_name, delim = "_", names = c("emu", "old_sim")) %>%
-  #select(-old_sim) %>%
-  group_by(site_id, emu_sim_name) %>%
-  mutate(site_id = cur_group_id()) %>%
-  ungroup() %>%
-  # get landcover type
+}) %>%
   left_join(sim_scenarios_emu %>%
               mutate(landtype = ifelse(psi == 0.03, "low", "high")) %>%
-              select(emu_sim_name = sim_id, landtype))
+              select(emu_sim_name = sim_id, total_samp, landtype)) %>%
+  mutate()
+
+# let's fit a hierarchical model using sample data
+# model_data <- obs_occ %>%
+#   filter(sim_id == 1, rep == 1) %>%
+#   # we need a site id that's unique for the whole sample frame, not just within an EMU
+#   #separate_wider_delim(emu_sim_name, delim = "_", names = c("emu", "old_sim")) %>%
+#   #select(-old_sim) %>%
+#   group_by(site_id, emu_sim_name) %>%
+#   mutate(site_id = cur_group_id()) %>%
+#   ungroup() %>%
+#   # get landcover type
+#   left_join(sim_scenarios_emu %>%
+#               mutate(landtype = ifelse(psi == 0.03, "low", "high")) %>%
+#               select(emu_sim_name = sim_id, landtype))
 
 map_model_df <- obs_occ %>%
-  group_by(scenario_id, rep) %>%
+  group_by(scenario_id, rep, total_samp) %>%
   nest() %>%
-  mutate(total_samp = 9776) %>%
   select(total_samp, scenario_id, repn = rep, data)
 
 hierarch_check_list <- pmap(map_model_df %>% filter(scenario_id == 1), hierarch_model_check)
@@ -246,15 +242,20 @@ hierarch_model_check <- function(total_samp, scenario_id, repn, data){
   # get example sample where half the sites are sampled
   #total_samp <- 19552
 
-  samp_sites <- c(sample(model_data %>% filter(landtype == "high") %>% pull(site_id) %>% unique(), round(19552*0.75), replace = FALSE),
-                  sample(model_data %>% filter(landtype == "low") %>% pull(site_id) %>% unique(), round(19552*0.25), replace = FALSE)
+  model_data <- data %>%
+    group_by(site_id, emu_sim_name) %>%
+    mutate(site_id = cur_group_id()) %>%
+    ungroup()
+
+  samp_sites <- c(sample(model_data %>% filter(landtype == "high") %>% pull(site_id) %>% unique(), round(total_samp*0.75), replace = FALSE),
+                  sample(model_data %>% filter(landtype == "low") %>% pull(site_id) %>% unique(), round(total_samp*0.25), replace = FALSE)
   )
 
   model_data_samp <- model_data %>% filter(site_id %in% samp_sites)
 
   obs_occ_array <- model_data_samp %>%
     arrange(site_id) %>%
-    select(-c(site_id, emu_sim_name, rep, sim_id, landtype)) %>%
+    select(-c(site_id, emu_sim_name, landtype)) %>%
     split(model_data_samp$visit) %>%
     map(., ~ .x %>% select(-visit) %>% as.matrix()) %>%
     simplify2array()
