@@ -107,11 +107,11 @@ emu_ratio %>%
 # Let's not worry about how the samples are distributed, just get a toy set of simulations to play with
 
 source(here::here("R/sim_dataset.R"))
-simn <- 5
+simn <- 100
 
 set.seed(42)
-plan(multisession, workers = 10)
-sim_list <- map(1:simn, ~furrr::future_pmap(sim_scenarios_emu %>%
+plan(multisession, workers = 70)
+hier_sim_list <- map(1:simn, ~furrr::future_pmap(sim_scenarios_emu %>%
                                               select(-sim_id, -total_samp), sim_dataset, nyear = nyear, n_vis = 2) %>%
                   set_names(sim_scenarios_emu$sim_id),
                 .options=furrr_options(seed = TRUE)) %>%
@@ -119,31 +119,9 @@ sim_list <- map(1:simn, ~furrr::future_pmap(sim_scenarios_emu %>%
 
 # reorder so top level of nested list is a sim scenario
 sim_list_emu <- map(sim_scenarios_emu$sim_id, function(emu) {
-  map(1:simn, ~pluck(sim_list, .x, emu)) %>%
+  map(1:simn, ~pluck(hier_sim_list, .x, emu)) %>%
     set_names(paste0("rep", 1:simn))}) %>%
   set_names(sim_scenarios_emu$sim_id)
-
-#get true occurrence for each rep and sim
-true_occ <- map_dfr(sim_scenarios_emu$sim_id, function(emu){
-  map_dfr(1:simn, ~pluck(sim_list_emu, emu, .x, "true_occ") %>%
-            select(-site_id) %>%
-            ungroup() %>%
-            summarize(across(everything(), mean)) %>%
-            mutate(rep = .x)) %>%
-    mutate(sim_id = emu)
-})
-
-# true_occ_stats <- true_occ %>%
-#   pivot_longer(starts_with("t"), names_to = "time", values_to = "occ") %>%
-#   select(-rep) %>%
-#   group_by(sim_id, time) %>%
-#   summarize(mean = mean(occ),
-#             lower = mean(occ) - qt(1- 0.05/2, (n() - 1))*sd(occ)/sqrt(n()),
-#             upper = mean(occ) + qt(1- 0.05/2, (n() - 1))*sd(occ)/sqrt(n())) %>%
-#   ungroup() %>%
-#   separate(sim_id, c("emu", "sim_num"), sep = "_", remove = FALSE) %>%
-#   mutate(time = as.numeric(stringr::str_remove(time, "t"))) %>%
-#   left_join(sim_scenarios_emu)
 
 ### Let's get the dataset aggregated across emu's
 # map high occupancy sims to their low occupancy counterpart
@@ -198,6 +176,8 @@ true_occ_high <- map_dfr(unique(sim_reps_df$scenario_id), function(scenario){
 ###########################################
 ############### Fit Models ################
 ###########################################
+
+# get observed detection histories pooled for all EMU's
 obs_occ <- map_dfr(unique(sim_reps_df$scenario_id), function(scenario){
   emu_sims <- sim_reps_df %>%
     filter(scenario_id == scenario) %>%
@@ -217,26 +197,16 @@ obs_occ <- map_dfr(unique(sim_reps_df$scenario_id), function(scenario){
               select(emu_sim_name = sim_id, total_samp, landtype)) %>%
   mutate()
 
-# let's fit a hierarchical model using sample data
-# model_data <- obs_occ %>%
-#   filter(sim_id == 1, rep == 1) %>%
-#   # we need a site id that's unique for the whole sample frame, not just within an EMU
-#   #separate_wider_delim(emu_sim_name, delim = "_", names = c("emu", "old_sim")) %>%
-#   #select(-old_sim) %>%
-#   group_by(site_id, emu_sim_name) %>%
-#   mutate(site_id = cur_group_id()) %>%
-#   ungroup() %>%
-#   # get landcover type
-#   left_join(sim_scenarios_emu %>%
-#               mutate(landtype = ifelse(psi == 0.03, "low", "high")) %>%
-#               select(emu_sim_name = sim_id, landtype))
-
+# nested dataframe where detection histories are ID'd by scenario_id, sample size, and the rep number
 map_model_df <- obs_occ %>%
   group_by(scenario_id, rep, total_samp) %>%
   nest() %>%
   select(total_samp, scenario_id, repn = rep, data)
 
-hierarch_check_list <- pmap(map_model_df %>% filter(scenario_id == 1), hierarch_model_check)
+# perform the power check
+set.seed(42)
+plan(multisession, workers = 78)
+hierarch_check_list <- furrr::future_pmap(map_model_df %>% filter(scenario_id == 1), hierarch_model_check, .options=furrr_options(seed = TRUE))
 
 hierarch_model_check <- function(total_samp, scenario_id, repn, data){
   # get example sample where half the sites are sampled
@@ -325,128 +295,5 @@ hierarch_model_check <- function(total_samp, scenario_id, repn, data){
                                          "success" = check_dist, "samps_under" = sum(true_trend > post$perc_change),
                                          "samps_over" = sum(true_trend < post$perc_change)),
               "posterior" = post
-  ))
-}
-
-
-
-model_check <- function(high_name, low_name, sample_size, repn, high_occ, low_occ) {
-
-  print(c(high_name, repn))
-
-  # define sample size for high_n, grab data
-  high_obs <- high_occ
-  high_n = sample_size
-
-  if (!is.na(low_name)){
-
-    low_n = round(high_n*(1/3))
-    low_obs <- low_occ
-
-    if(low_n > n_distinct(low_obs$site_id)){
-      low_n = n_distinct(low_obs$site_id)
-    }
-
-    obs_occ_df <- bind_rows(low_obs %>% filter(site_id %in% sample(unique(low_obs$site_id), low_n, replace = FALSE)),
-                            high_obs %>% filter(site_id %in% sample(unique(high_obs$site_id), high_n, replace = FALSE))) %>%
-      arrange(visit)
-  } else {
-
-    low_n = NA
-
-    obs_occ_df <- high_obs %>%
-      filter(site_id %in% sample(unique(high_obs$site_id), high_n, replace = FALSE)) %>%
-      arrange(visit)
-  }
-
-
-
-  obs_occ_array <- obs_occ_df %>%
-    select(-site_id, landtype) %>%
-    split(obs_occ_df$visit) %>%
-    map(., ~ .x %>% select(-visit, -landtype) %>% as.matrix()) %>%
-    simplify2array()
-
-  landtype_cov <- obs_occ_df %>%
-    filter(visit == 1) %>%
-    select(landtype)
-
-  year_cov <- matrix(1:nyear, nrow = 1)
-  year_cov <- year_cov %x% rep(1, dim(obs_occ_array)[1])
-
-  occ.covs <- list(landtype = landtype_cov, year = year_cov)
-
-  #fit_model
-  n.chains <- 3
-  n.thin <- 1
-  n.burn <- 500
-  n.batch <- 30
-  batch.length <- 25
-
-
-  z.init <- apply(obs_occ_array, c(1, 2), function(a) as.numeric(sum(a, na.rm = TRUE) > 0))
-  inits.list <- list(beta = 0,
-                     alpha = 0,
-                     z = z.init)
-
-  prior.list <- list(beta.normal = list(mean = 0, var = 2.72),
-                     alpha.normal = list(mean = 0, var = 2.72))
-
-  if (is.na(low_n)){
-    test_fit <- tPGOcc(occ.formula = ~ year,
-                       det.formula = ~ 1,
-                       data = list(y = obs_occ_array, occ.covs = occ.covs),
-                       inits = inits.list,
-                       priors = prior.list,
-                       n.omp.threads = 1,
-                       verbose = TRUE,
-                       n.report = 750,
-                       n.burn = n.burn,
-                       n.thin = n.thin,
-                       n.chains = n.chains,
-                       n.batch = n.batch,
-                       batch.length = batch.length)
-  } else{
-
-    test_fit <- tPGOcc(occ.formula = ~ year + landtype,
-                       det.formula = ~ 1,
-                       data = list(y = obs_occ_array, occ.covs = occ.covs),
-                       inits = inits.list,
-                       priors = prior.list,
-                       n.omp.threads = 1,
-                       verbose = TRUE,
-                       n.report = 750,
-                       n.burn = n.burn,
-                       n.thin = n.thin,
-                       n.chains = n.chains,
-                       n.batch = n.batch,
-                       batch.length = batch.length)
-
-  }
-
-
-  # get the posterior for the estimates
-  post <- as.data.frame(test_fit$beta.samples) %>%
-    rename(intercept = `(Intercept)`) %>%
-    #mutate(across(everything(), plogis)) %>%
-    mutate(t10 = plogis(year*10 + intercept),
-           t1 = plogis(year + intercept),
-           perc_change = (t10-t1)/t1) %>%
-    mutate(sim_id = high_name, rep = repn)
-
-  true_trend <- true_occ %>%
-    filter(sim_id == high_name, rep == repn) %>%
-    mutate(perc_change = (t10-t1)/t1) %>%
-    pull(perc_change)
-
-  check_dist <- between(true_trend, min(post$perc_change),max(post$perc_change)) & !between(0, min(post$perc_change),max(post$perc_change))
-  #check_dist_null <- between(true_trend, min(post_null$perc_change),max(post_null$perc_change)) & !between(0, min(post_null$perc_change),max(post_null$perc_change))
-
-  return(list("power_check" = data.frame("sim_id" = high_name, "rep" = repn, "low_n" = low_n, "high_n" = high_n,
-                                         "true_perc_change" = true_trend, "est_perc_change" = mean(post$perc_change), #"est_perc_change_null" = mean(post_null$perc_change),
-                                         "success" = check_dist, "samps_under" = sum(true_trend > post$perc_change),
-                                         "samps_over" = sum(true_trend < post$perc_change)),
-              "posterior" = post#,
-              #"posterior_null" = post_null
   ))
 }
