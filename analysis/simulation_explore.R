@@ -31,6 +31,7 @@ emu_veg <- read.csv(here::here("data/EMU_veg_types.csv")) %>%
     veg_type_landfire == "Rocky Mountain Lodgepole Pine Forest" ~ "low",
     veg_type_landfire == "Rocky Mountain Subalpine-Montane Limber-Bristlecone Pine Woodland" ~ "low",
     veg_type_landfire == "Southern Rocky Mountain Mesic Montane Mixed Conifer Forest and Woodland" ~ "high",
+    veg_type_landfire == "Madrean Pinyon-Juniper Woodland" ~ "low",
     .default = NA
   ))
 
@@ -438,7 +439,7 @@ model_check <- function(high_name, low_name, sample_size, repn, high_occ, low_oc
   ))
 }
 
-pwr_check <- model_check(high_name = "BRE_21", low_name = "BRE_1", sample_size = 40, repn = 1)
+#pwr_check <- model_check(high_name = "BRE_21", low_name = "BRE_1", sample_size = 40, repn = 1)
 
 set.seed(42)
 plan(multisession, workers = 78)
