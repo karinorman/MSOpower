@@ -206,7 +206,7 @@ map_model_df <- obs_occ %>%
 # perform the power check
 set.seed(42)
 plan(multisession, workers = 70)
-hierarch_check_list <- furrr::future_pmap(map_model_df %>% filter(scenario_id == 1), hierarch_model_check, .options=furrr_options(seed = TRUE))
+hierarch_check_list <- furrr::future_pmap(map_model_df, hierarch_model_check, .options=furrr_options(seed = TRUE))
 
 hierarch_model_check <- function(total_samp, scenario_id, repn, data){
   # get example sample where half the sites are sampled
