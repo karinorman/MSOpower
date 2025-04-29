@@ -203,33 +203,29 @@ map_model_df <- obs_occ %>%
   nest() %>%
   select(total_samp, scenario_id, repn = rep, data)
 
-# perform the power check
-set.seed(42)
-plan(multisession, workers = 70)
-hierarch_check_list <- furrr::future_pmap(map_model_df, hierarch_model_check, .options=furrr_options(seed = TRUE))
 
 hierarch_model_check <- function(total_samp, scenario_id, repn, data){
   # get example sample where half the sites are sampled
   #total_samp <- 19552
-
+  
   model_data <- data %>%
     group_by(site_id, emu_sim_name) %>%
     mutate(site_id = cur_group_id()) %>%
     ungroup()
-
+  
   samp_sites <- c(sample(model_data %>% filter(landtype == "high") %>% pull(site_id) %>% unique(), round(total_samp*0.75), replace = FALSE),
                   sample(model_data %>% filter(landtype == "low") %>% pull(site_id) %>% unique(), round(total_samp*0.25), replace = FALSE)
   )
-
+  
   model_data_samp <- model_data %>% filter(site_id %in% samp_sites)
-
+  
   obs_occ_array <- model_data_samp %>%
     arrange(site_id) %>%
     select(-c(site_id, emu_sim_name, landtype)) %>%
     split(model_data_samp$visit) %>%
     map(., ~ .x %>% select(-visit) %>% as.matrix()) %>%
     simplify2array()
-
+  
   covars <-  model_data_samp %>%
     arrange(site_id) %>%
     filter(visit == 1) %>%
@@ -238,29 +234,29 @@ hierarch_model_check <- function(total_samp, scenario_id, repn, data){
     select(emu, landtype) %>%
     group_by(emu) %>%
     mutate(emu_num = cur_group_id())
-
+  
   year_cov <- matrix(1:nyear, nrow = 1)
   year_cov <- year_cov %x% rep(1, dim(obs_occ_array)[1])
-
+  
   covar_list <- list(emu = covars$emu_num, landtype = covars$landtype, year = year_cov)
-
+  
   #fit_model
   n.chains <- 3
   n.thin <- 1
   n.burn <- 500
   n.batch <- 30
   batch.length <- 25
-
-
+  
+  
   z.init <- apply(obs_occ_array, c(1, 2), function(a) as.numeric(sum(a, na.rm = TRUE) > 0))
   inits.list <- list(beta = 0,
                      alpha = 0,
                      z = z.init)
-
+  
   prior.list <- list(beta.normal = list(mean = 0, var = 2.72),
                      alpha.normal = list(mean = 0, var = 2.72))
-
-
+  
+  
   test_fit <- tPGOcc(occ.formula = ~ year + (1 | emu),
                      det.formula = ~ 1,
                      data = list(y = obs_occ_array, occ.covs = covar_list),
@@ -274,22 +270,22 @@ hierarch_model_check <- function(total_samp, scenario_id, repn, data){
                      n.chains = n.chains,
                      n.batch = n.batch,
                      batch.length = batch.length)
-
+  
   post <- as.data.frame(test_fit$beta.samples) %>%
     rename(intercept = `(Intercept)`) %>%
     #mutate(across(everything(), plogis)) %>%
     mutate(t10 = plogis(year*10 + intercept),
            t1 = plogis(year + intercept),
            perc_change = (t10-t1)/t1) %>%
-  mutate(scenario_id = scenario_id, rep = repn)
-
+    mutate(scenario_id = scenario_id, rep = repn)
+  
   true_trend <- true_occ_high %>%
     filter(scenario_id == 1, rep == 1) %>%
     mutate(perc_change = (t10-t1)/t1) %>%
     pull(perc_change)
-
+  
   check_dist <- between(true_trend, min(post$perc_change),max(post$perc_change)) & !between(0, min(post$perc_change),max(post$perc_change))
-
+  
   return(list("power_check" = data.frame("scenario_id" = scenario_id, "rep" = repn,
                                          "true_perc_change" = true_trend, "est_perc_change" = mean(post$perc_change),
                                          "success" = check_dist, "samps_under" = sum(true_trend > post$perc_change),
@@ -297,3 +293,40 @@ hierarch_model_check <- function(total_samp, scenario_id, repn, data){
               "posterior" = post
   ))
 }
+
+
+# perform the power check
+set.seed(42)
+plan(multisession, workers = 70)
+hierarch_check_list <- furrr::future_pmap(map_model_df, hierarch_model_check, .options=furrr_options(seed = TRUE))
+
+# get the pieces as two seperate dataframes
+hier_power_check_df <- map_dfr(1:length(hierarch_check_list), ~pluck(hierarch_check_list, .x, "power_check"))
+hier_power_check_post_df <- map_dfr(1:length(hierarch_check_list), ~pluck(hierarch_check_list, .x, "posterior"))
+
+# save out so we don't have to re run
+readr::write_csv(hier_power_check_df, here::here("data/hier_power_check_df.csv"))
+readr::write_csv(hier_power_check_post_df, here::here("data/hier_power_check_post_df.csv"))
+
+power_plot_df <- hier_power_check_df %>%
+  group_by(scenario_id) %>%
+  summarize(across(c(success), ~sum(.x)/simn)) %>%
+  left_join(sim_map %>%
+              mutate(scenario_id = as.character(scenario_id)) %>%
+              select(-c(high_name, low_name, emu)) %>% distinct()
+            ) %>%
+  group_by(psi, p, phi, total_samp) %>%
+  mutate(line_id = cur_group_id()) #%>%
+  #separate(sim_id, c("emu", "sim_num"), sep = "_", remove = FALSE)
+
+power_plt <- power_plot_df %>%
+  mutate(sim_type = paste0("Psi = ", psi, ", Phi = ", phi)) %>%
+  ggplot(aes(x = total_samp, y = success)) +
+  geom_line(aes(color = as.factor(sim_type), linetype = forcats::fct_rev(as.factor(p)))) +
+  #facet_wrap(~emu, scales = "free") +
+  theme_classic() +
+  scale_color_discrete(name = "Scenario") +
+  scale_linetype_discrete(name = "Detection") +
+  geom_hline(yintercept = 0.9, color = "darkgrey")#, linetype = "dotted")
+
+
