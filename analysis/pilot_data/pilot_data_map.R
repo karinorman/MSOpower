@@ -1,6 +1,11 @@
 library(dplyr)
 library(ggplot2)
 library(cowplot)
+library(terra)
+library(tidyterra)
+library(sf)
+library(ggspatial)
+library(purrr)
 
 #### Plot of all ARU locations ####
 
@@ -129,7 +134,11 @@ get_inset_map <- function(forest_name, buffer_dist, pt_size){
           axis.ticks = element_blank(),
           axis.ticks.length = unit(0, "pt"),
           plot.margin = margin(0,0,0,0)
-          )
+          ) +
+    annotation_scale(pad_x = unit(0.5, "cm"),
+                    pad_y = unit(0.5, "cm"),
+                    height = unit(0.1, "cm"),
+                    text_cex = 0.5)
 }
 
 get_inset_map("kaibab", 2, 2)
