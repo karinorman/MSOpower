@@ -138,7 +138,12 @@ get_inset_map <- function(forest_name, buffer_dist, pt_size){
     annotation_scale(pad_x = unit(0.5, "cm"),
                     pad_y = unit(0.5, "cm"),
                     height = unit(0.1, "cm"),
-                    text_cex = 0.5)
+                    text_cex = 0.5) +
+    annotation_north_arrow(location = "br", which_north = "true",
+                           height = unit(.5, "cm"),
+                           style = north_arrow_minimal(text_size = 7),
+                           pad_y = unit(0.5, "cm"),
+                           pad_x = unit(0.03, "cm"))
 }
 
 get_inset_map("kaibab", 2, 2)
