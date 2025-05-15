@@ -70,7 +70,7 @@ sim_scenarios <- data.frame(
   mutate(sd_phi = 0.04, sd_gamma = 0.01, perc_red = 0.25)
 
 high_hex_count <- emu_ratio %>% filter(occupancy == "high") %>% pull(hex_count) %>% sum()
-sample_sizes <- seq(log(100), log(high_hex_count/2), by = 0.5) %>% exp() %>% round()
+sample_sizes <- seq(log(100), log(3000), by = 0.3) %>% exp() %>% round()
 
 # get scenarios, one for each emu
 sim_scenarios_emu <- bind_rows(sim_scenarios %>% mutate(emu = "BRE"),
@@ -107,10 +107,10 @@ emu_ratio %>%
 # Let's not worry about how the samples are distributed, just get a toy set of simulations to play with
 
 source(here::here("R/sim_dataset.R"))
-simn <- 100
+simn <- 300
 
 set.seed(42)
-plan(multisession, workers = 70)
+plan(multisession, workers = 60)
 hier_sim_list <- map(1:simn, ~furrr::future_pmap(sim_scenarios_emu %>%
                                               select(-sim_id, -total_samp), sim_dataset, nyear = nyear, n_vis = 2) %>%
                   set_names(sim_scenarios_emu$sim_id),
@@ -243,9 +243,9 @@ hierarch_model_check <- function(total_samp, scenario_id, repn, data){
   #fit_model
   n.chains <- 3
   n.thin <- 1
-  n.burn <- 500
-  n.batch <- 30
-  batch.length <- 25
+  n.burn <- 2000
+  n.batch <- 60
+  batch.length <- 50
   
   
   z.init <- apply(obs_occ_array, c(1, 2), function(a) as.numeric(sum(a, na.rm = TRUE) > 0))
