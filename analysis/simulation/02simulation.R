@@ -476,7 +476,7 @@ power_plt <- power_plot_df %>%
   theme_classic() +
   scale_color_discrete(name = "Scenario") +
   scale_linetype_discrete(name = "Detection") +
-  geom_hline(yintercept = 0.9, color = "darkgrey")#, linetype = "dotted")
+  geom_hline(yintercept = 0.9, color = "darkgrey", linetype = "dotted")
 
 
 ggsave(here::here("figures/power_plot.jpeg"), power_plt)
