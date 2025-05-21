@@ -412,36 +412,3 @@ occupancy_plt <- ggplot() +
   theme_void()
 
 ggsave(here::here("figures/occupancy_map.jpeg"), occupancy_plt)
-
-
-#########################
-## Manuscript Figure ###
-########################
-
-ext_box <- ext(emus_proj)
-ext_box[4] <- 41
-
-# landcover <- rast(here::here("data/LF2023_EVT_240_CONUS/Tif/LC23_EVT_240.tif")) %>%
-#   crop(emus %>% vect() %>% project("epsg:5070"))
-
-# lc_plot <- plot(landcover)
-# pal <- lc_plot$leg$fill
-# names(pal) <- lc_plot$leg$legend
-
-n_lc_types <- n_distinct(grid_sample_frame$veg_type_landfire)
-pal <- colorspace::terrain_hcl(n_lc_types + 1)
-
-boundary_states <- rnaturalearth::ne_states(iso_a2 = "US") %>%
-  vect() %>%
-  project("epsg:4326") %>%
-  filter(name %in% c("Arizona", "Colorado", "New Mexico", "Utah", "Texas")) %>%
-  crop(ext_box)
-
-ggplot() +
-  geom_spatvector(data = boundary_states, fill = "transparent") +
-  geom_spatvector(data = emus_proj, color = "white", fill = "lightgrey", alpha = 0.5) +
-  geom_spatvector(data = boundary_states %>% aggregate(), fill = "transparent" ) +
-  geom_spatvector(data = grid_sample_frame %>% filter(include_patch == "yes"), aes(fill = veg_type_landfire, color = veg_type_landfire)) +
-  scale_fill_manual(values = pal) +
-  scale_color_manual(values = pal) +
-  theme_void()
