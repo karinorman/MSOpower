@@ -3,6 +3,7 @@ library(terra)
 library(tidyterra)
 library(ggplot2)
 library(sf)
+library(cowplot)
 
 
 emus <- st_read(here::here("data/MSO_EMUs/MSO_EMUs.shp")) %>%
@@ -63,15 +64,21 @@ boundary_states <- rnaturalearth::ne_states(iso_a2 = "US") %>%
   filter(name %in% c("Arizona", "Colorado", "New Mexico", "Utah", "Texas")) %>%
   crop(ext_box)
 
+crop_box <- st_bbox(c(xmin = -105.7, xmax = -104.5, ymax = 39.3, ymin = 38.5), crs = st_crs(4326))
+
 base_map <- ggplot() +
   geom_spatvector(data = boundary_states, fill = "transparent") +
-  geom_spatvector(data = emus, color = "white", fill = "lightgrey", alpha = 0.5, linewidth = .8) +
+  geom_spatvector(data = emus, color = "white", fill = "lightgrey", alpha = 0.5, linewidth = .5) +
   geom_spatvector(data = boundary_states %>% aggregate(), fill = "transparent" ) +
   geom_spatvector(data = grid_veg_samp, aes(fill = plot_lc, color = plot_lc)) +
+  geom_spatvector(data = vect(st_as_sfc(crop_box)), color = "black", fill = "transparent", linewidth = 0.6) +
   scale_fill_manual(values = pal) +
   scale_color_manual(values = pal) +
-  #theme_void() +
-  theme(legend.title = element_blank()) +
+  theme_void() +
+  theme(legend.position = "inside",
+        legend.position.inside = c(1.15, .35),
+        legend.title = element_blank(),
+        plot.margin = margin(2, 8, .5, 0.5, "cm")) +
   annotate("label", x = -112.5, y = 42, label = "Colorado \nPlateau") +
   annotate("label", x = -106, y = 42, label = "Southern Rocky \nMountains") +
   annotate("label", x = -112.5, y = 30.5, label = "Basin and \nRange West") +
@@ -80,13 +87,23 @@ base_map <- ggplot() +
   annotate("label", x = -103, y = 35, label = "Basin and \nRange East")
 
 ggsave(here::here("figures/emu_basemap.jpg"), base_map)
-#crop_box <- st_bbox(c(xmin = -105.5, xmax = -104.5, ymax = 38.5, ymin = 38), crs = st_crs(4326))
-crop_box <- st_bbox(c(xmin = -105.7, xmax = -104, ymax = 39.3, ymin = 38.5), crs = st_crs(4326))
 
-ggplot() +
+inset_map <- ggplot() +
   geom_spatvector(data = emus %>% st_crop(crop_box), color = "white", fill = "lightgrey", alpha = 0.5, linewidth = .8) +
   geom_spatvector(data = grid_veg_samp %>% crop(crop_box), aes(fill = plot_lc), color = "white") +
   scale_fill_manual(values = pal) +
   theme_void()+
-  theme(legend.position = "none") #+
-  #geom_spatvector(data = vect(crop_box), color = "black", fill = "transparent", linewidth = 1)
+  theme(legend.position = "none") +
+  geom_spatvector(data = vect(st_as_sfc(crop_box)), color = "black", fill = "transparent", linewidth = 0.5)
+
+study_map <- ggdraw(base_map) +
+  draw_plot(
+    {inset_map},
+    x = .59,
+    y = .55,
+    width = 0.4,
+    height = 0.4
+  )
+
+ggsave(here::here("figures/sample_frame_map.jpeg"), study_map, width = 210, height = 180, units = "mm")
+
