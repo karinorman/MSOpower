@@ -53,9 +53,13 @@ sample_frame <- grid_sample_frame %>%
 sf_use_s2(FALSE)
 
 # emu footprint with 20 mile buffer
-emu <- vect(here::here("data/MSO_EMUs/MSO_EMUs.shp")) %>%
-  aggregate() %>%
-  buffer(width = 32186.9)
+# emu <- vect(here::here("data/MSO_EMUs/MSO_EMUs.shp")) %>%
+#   aggregate() %>%
+#   buffer(width = 32186.9)
+
+##########################################
+#### Get tigris road data from census ####
+##########################################
 
 # grid footprint with 30 mile buffer
 grid_footprint <- grid_sample_frame %>%
@@ -65,9 +69,11 @@ grid_footprint <- grid_sample_frame %>%
 # download roads from tigris
 state_list <- c("08", "49", "35", "04", "48", "16", "56", "32", "06")
 
+# get list of counties in our states of interest
 county_shp <- counties(state = state_list) %>%
   st_transform(4326)
 
+# get only the counties that intersect with our sample grid
 grid_counties <- county_shp %>%
   st_intersects(st_as_sf(grid_footprint))
 
@@ -75,11 +81,12 @@ county_shp_grid <- county_shp %>%
   bind_cols(data.frame(intersects = apply(grid_counties, 1, any))) %>%
   filter(intersects == TRUE)
 
-ggplot() + geom_spatvector(data = vect(county_shp_grid)) + geom_spatvector(data = grid_footprint, color = "red", fill = "transparent")
+#ggplot() + geom_spatvector(data = vect(county_shp_grid)) + geom_spatvector(data = grid_footprint, color = "red", fill = "transparent")
 
+# create folder to save out county level shapefiles
 dir.create(here::here('data/road_shp'), showWarnings = FALSE)
 
-# map across states and pull out a list of county codes from the county shapefiles
+# map across states and counties, project and save shapefile
 road_sf_list <- purrr::pmap(county_shp_grid %>% select(STATEFP, COUNTYFP) %>% st_drop_geometry(), function(STATEFP, COUNTYFP) {
   road_shp <- roads(state = STATEFP, county = COUNTYFP) %>% st_transform(4326)
 
@@ -87,84 +94,69 @@ road_sf_list <- purrr::pmap(county_shp_grid %>% select(STATEFP, COUNTYFP) %>% st
   })
 
 
+# read in and combine all shapefiles
 grid_sf <- st_as_sf(grid_sample_frame)
 ordered_hex_ids <- grid_sample_frame$ID
 file_list <- list.files(here::here('data/road_shp'), pattern = ".shp")
 
-# min_road_dist <- map_dfr(file_list, ~ st_read(here::here('data/road_shp', .x)) %>%
-#       st_distance(grid_sf, .) %>%
-#       apply(MARGIN = 1, FUN = min) %>%
-#       data.frame(hex_id = ordered_hex_ids, road_dist = ., county = .x)
-#       )
-
-
+# master shapefile, then get name of closest road for each hex
 master_roads <- purrr::map_dfr(file_list, ~st_read(here::here("data/road_shp", .x)))
 closest_road <- st_nearest_feature(grid_sf, master_roads)
 
+# map the road ID to it's string name from the original shapefile
 road_df <- data.frame(hex_id = ordered_hex_ids, closest_road = closest_road) %>%
   left_join(master_roads %>%
               select(LINEARID) %>%
               mutate(closest_road = row_number()) %>%
-              st_drop_geometry()) %>%
-  rowwise() %>%
-  mutate(distance = st_distance(grid_sf %>% filter(ID == hex_id), master_roads %>% filter(LINEARID == LINEARID)))
+              st_drop_geometry())
 
-road_distance <- purrr::pmap(road_df %>% select(hex_id, LINEARID), function(hex_id, LINEARID){
-  st_distance(grid_sf %>% filter(ID == hex_id), master_roads %>% filter(LINEARID == LINEARID)) %>%
+# get distance between each hex and its closest road
+road_distance <- pmap_dfr(road_df %>% select(hex_id, road_id = LINEARID), function(hex_id, road_id){
+  st_distance(grid_sf %>% filter(ID == hex_id), master_roads %>% filter(LINEARID == road_id)) %>%
     as.vector() %>%
     data.frame(hex_id = hex_id, distance = .)
 })
 
-
-
-test_shp <- st_read(here::here('data/road_shp', file_list[1]))
-
-test_dist <- st_distance(st_as_sf(grid_sample_frame), test_shp)
-
-# tigris_road_sf <- bind_rows(road_sf_list) %>%
-#   st_transform(4326)
-
-# get min distance
-# tigris_road_dist <- purrr::map_dfr(unique(tigris_road_sf$RTTYP), ~st_distance(st_as_sf(grid_sample_frame), tigris_road_sf %>%
-#                                                                             filter(RTTYP == .x)))
-
-
-
-county_chunk_min_dist <- map_dfr(road_sf_list, ~st_distance(st_as_sf(grid_sample_frame), .x) %>%
-              apply(MARGIN = 1, FUN = min) %>%
-              data.frame(hex_id = ordered_hex_ids, road_dist = .))
-
-## Let's also get distance to FS roads, in case that data product is more up to date
-# get boundary for states
-boundary_states <- rnaturalearth::ne_states(iso_a2 = "US") %>%
-  vect() %>%
-  project("epsg:4326") %>%
-  filter(name %in% c("Arizona","New Mexico", "Utah", "Colorado")) %>%
-  aggregate()
+##############################
+#### Get dist to FS roads ####
+##############################
 
 # get min distance to road from hex boundary
 nfs_roads <- vect(here::here("data/National_Forest_System_Roads_(Feature_Layer)/National_Forest_System_Roads_(Feature_Layer).shp")) %>%
   project("epsg:4326") %>%
-  crop(boundary_states)
+  crop(grid_footprint) %>%
+  st_as_sf()
 
-nfs_road_dist <- st_distance(st_as_sf(grid_sample_frame), st_as_sf(nfs_roads))
+nfs_closest_road <- st_nearest_feature(grid_sf, nfs_roads)
 
-min_nfs_road <- min_road_dist %>%
-  apply(MARGIN = 1, FUN = min) %>%
-  data.frame(hex_id = grid_sample_frame$ID, road_dist = .)
+# map the road ID to it's string name from the original shapefile
+nfs_road_df <- data.frame(hex_id = ordered_hex_ids, closest_road = nfs_closest_road) %>%
+  left_join(nfs_roads %>%
+              select(OBJECTID) %>%
+              mutate(closest_road = row_number()) %>%
+              st_drop_geometry())
 
-far_roads <- min_road %>%
-  filter(road_dist > 200000) %>%
-  pull(hex_id)
+# get distance between each hex and its closest road
+nfs_road_distance <- pmap_dfr(nfs_road_df %>% select(hex_id, road_id = OBJECTID), function(hex_id, road_id){
+  st_distance(grid_sf %>% filter(ID == hex_id), nfs_roads %>% filter(OBJECTID == road_id)) %>%
+    as.vector() %>%
+    data.frame(hex_id = hex_id, distance = .)
+})
 
-ggplot() +
-  geom_spatvector(data = roads) +
-  geom_spatvector(data = grid_sample_frame %>% filter(ID %in% far_roads) %>% centroids(), color = "red", fill = "red")
+usethis::use_data(nfs_road_distance)
 
+# get min distance between the two road data sources
+min_distance <- road_distance %>%
+  rename(tigris_dist = distance) %>%
+  left_join(nfs_road_distance %>%
+              rename(nfs_dist = distance)) %>% 
+  rowwise() %>%
+  mutate(road_distance = min(tigris_dist, nfs_dist)) %>%
+  select(hex_id, road_distance)
 
+hex_metadata <- sample_frame %>%
+  rename(hex_id = ID) %>%
+  left_join(min_distance)
 
-# buffer_hex <- grid_sample_frame %>%
-#   filter(ID == 8786) %>%
-#   buffer(width = 2000)
-#
-# tigris_buffer <- tigris_road_sf %>% vect() %>% crop(buffer_hex)
+readr::write_csv(hex_metadata, here::here("data/hex_metadata.csv"))
+
