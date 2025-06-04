@@ -36,25 +36,17 @@ hier_plot_df <- hier_plot_df %>%
   select(-scenario_id) %>%
   left_join(sim_scenarios_table, by = c("phi", "p", "psi" = "psi_high"))
 
-power_plt <- power_plot_df %>%
-  mutate(sim_type = paste0("Psi = ", psi, ", Phi = ", phi)) %>%
-  ggplot(aes(x = total_samp, y = success)) +
-  geom_line(aes(color = as.factor(sim_type), linetype = forcats::fct_rev(as.factor(p)))) +
-  #facet_wrap(~emu, scales = "free") +
-  theme_classic() +
-  scale_color_discrete(name = "Scenario") +
-  scale_linetype_discrete(name = "Detection") +
-  geom_hline(yintercept = 0.9, color = "darkgrey")#, linetype = "dotted")
 
-hier_plot_df %>%
+power_plt <- hier_plot_df %>%
   arrange(psi) %>%
   mutate(sim_type = paste0(simulation_scenario, ": psi = ", psi, ", phi = ", phi, ", p = ", p)) %>%
   ggplot(aes(x = total_samp, y = success)) +
   geom_line(aes(color = sim_type, linetype = sim_type)) +
   theme_classic() +
-  scale_colour_discrete("") +
-  scale_linetype_manual("", values=c(1,2,1,2,1,2)) +
-  geom_hline(yintercept = 0.9, color = "darkgrey", linetype = "dotted")
+  scale_colour_discrete("", type = rep(c("#8A6240", "#87A96B", "#28587B", "#76BED0"), each = 2)) +
+  scale_linetype_manual("", values=c(2,1,2,1,2,1,2,1)) +
+  geom_hline(yintercept = 0.9, color = "darkgrey", linetype = "dashed") +
+  geom_vline(xintercept = 2000, color = "darkgrey")
 
 
 ggsave(here::here("figures/hier_power_plot.jpeg"), power_plt)
