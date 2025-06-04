@@ -468,15 +468,4 @@ power_plot_df <- power_check_df %>%
   mutate(line_id = cur_group_id()) %>%
   separate(sim_id, c("emu", "sim_num"), sep = "_", remove = FALSE)
 
-power_plt <- power_plot_df %>%
-  mutate(sim_type = paste0("Psi = ", psi, ", Phi = ", phi)) %>%
-  ggplot(aes(x = total_n, y = success)) +
-  geom_line(aes(color = as.factor(sim_type), linetype = forcats::fct_rev(as.factor(p)))) +
-  facet_wrap(~emu, scales = "free") +
-  theme_classic() +
-  scale_color_discrete(name = "Scenario") +
-  scale_linetype_discrete(name = "Detection") +
-  geom_hline(yintercept = 0.9, color = "darkgrey", linetype = "dotted")
-
-
-ggsave(here::here("figures/power_plot.jpeg"), power_plt)
+readr::write_csv(power_plot_df, here::here("data/power_plot_df.csv"))
