@@ -121,7 +121,7 @@ sim_scenarios_emu <- sim_scenarios_emu %>%
 ###########################################
 
 source(here::here("R/sim_dataset.R"))
-simn <- 100
+simn <- 200
 
 #single_rep <- purrr::pmap(sim_scenarios_emu %>% select(-sim_id), sim_dataset, nyear = nyear, n_vis = 2) %>% set_names(sim_scenarios_emu$sim_id)
 
