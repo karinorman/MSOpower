@@ -70,7 +70,8 @@ sim_scenarios <- data.frame(
   mutate(sd_phi = 0.04, sd_gamma = 0.01, perc_red = 0.25)
 
 high_hex_count <- emu_ratio %>% filter(occupancy == "high") %>% pull(hex_count) %>% sum()
-sample_sizes <- seq(log(100), log(3000), by = 0.3) %>% exp() %>% round()
+#sample_sizes <- seq(log(100), log(3000), by = 0.3) %>% exp() %>% round()
+sample_sizes <- seq(log(100), log(high_hex_count/2), by = 0.5) %>% exp() %>% round()
 
 # get scenarios, one for each emu
 sim_scenarios_emu <- bind_rows(sim_scenarios %>% mutate(emu = "BRE"),
