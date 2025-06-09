@@ -38,20 +38,22 @@ sim_dataset <- function(psi, phi, sd_phi, sd_gamma, p, n_sites, perc_red, nyear,
   true_psi = c(psi, map(1:9, ~ psi * (annual_perc_red ^ .x))) %>% unlist()
 
   ### initialize vector for yearly survival, after reduction
-  phi_year = rep(0,nyear-1)
+  phi_year = rep(0,nyear)
   phi_year[1] = phi
 
   # initialize vector for survival reduction, need length(phi_year)-1 or nyear-2 reductions to get phi's after initial phi
-  annual_phi_red = rep(0,nyear-2)
+  annual_phi_red = rep(0,nyear-1)
 
 
-  for (j in 2:(nyear-1)) {
+  for (j in 2:(nyear)) {
     annual_phi_red[j-1] = ((annual_perc_red*true_psi[j-1]) - (gamma*(1-true_psi[j-1])))/(true_psi[j-1]*phi_year[j-1])
 
     phi_year[j] = phi_year[j-1]*annual_phi_red[j-1]
 
   }
 
+  # remove initializing survival value, have to start having a reduction in year one
+  phi_year <- phi_year[2:10]
 
 
   # # create phi for each time step with a reduction from the previous year's phi
