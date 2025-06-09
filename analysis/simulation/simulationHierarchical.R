@@ -316,4 +316,4 @@ power_plot_df <- hier_power_check_df %>%
             ) %>%
   group_by(psi, p, phi, total_samp)
 
-readr::write_csv(power_plot_df, here::here("data/hier_plot_df. csv"))
+readr::write_csv(power_plot_df, here::here("data/hier_plot_df.csv"))

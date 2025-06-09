@@ -1,4 +1,5 @@
 library(dplyr)
+library(tidyr)
 library(ggplot2)
 
 ## Fixed study characteristics
@@ -30,7 +31,7 @@ sim_scenarios_table <- data.frame(
   mutate(simulation_scenario = row_number()) %>%
   select(simulation_scenario,everything())
 
-hier_plot_df <- read.csv(here::here("data/hier_plot_df. csv"))
+hier_plot_df <- read.csv(here::here("data/hier_plot_df.csv"))
 
 hier_plot_df <- hier_plot_df %>%
   select(-scenario_id) %>%
