@@ -120,6 +120,8 @@ true_occ_stats_equil <- true_occ_equil %>%
   mutate(time = as.numeric(stringr::str_remove(time, "t"))) %>%
   left_join(sim_scenarios)
 
+pal <- c("#8A6240", "#87A96B", "#28587B", "#c9673a")
+
 true_occ_stats_equil %>%
   ggplot(aes(x = time, y = mean)) +
   geom_ribbon(aes(ymin = lower, ymax = upper, fill = sim_num), alpha = 0.3) +
@@ -145,3 +147,93 @@ true_occ_stats_equil %>%
   scale_fill_discrete(name = "Sim Scenario") +
   geom_hline(yintercept = 0.03, linetype = "dotted") +
   geom_hline(yintercept = 0.0225, linetype = "dotted")
+
+
+
+####### Joined Plot #######
+
+join_df <- bind_rows(true_occ_stats_recurs %>%
+            mutate(sim_num = paste0(sim_num, "_recurs"),
+                   algo = "recursive"),
+          true_occ_stats_equil %>%
+            mutate(sim_num = paste0(sim_num, "_equil"),
+                   algo = "equilibrium"))
+
+high_occ_plot <- join_df %>%
+  filter(psi == 0.6) %>%
+  mutate(sim_type = paste0(algo, ", ", "phi = ", phi)) %>%
+  ggplot(aes(x = time, y = mean)) +
+  #geom_ribbon(aes(ymin = lower, ymax = upper, fill = sim_num), alpha = 0.3) +
+  geom_line(aes(group = sim_num, linetype = sim_type, color = sim_type), linewidth = 0.75) +
+  theme_classic() +
+  ylim(c(0.4, 0.65)) +
+  ylab("Occupancy") +
+  #facet_wrap(~emu, scales = "free") +
+  scale_colour_discrete("", type = rep(c("#c9673a", "#28587B"), 2)) +
+  scale_linetype_manual("", values=c(2,2,1,1)) +
+  geom_hline(yintercept = 0.45, linetype = "dashed", color = "grey") +
+  geom_hline(yintercept = 0.6, linetype = "dashed", color = "grey") +
+  scale_x_continuous(breaks = c(2, 4, 6, 8, 10)) +
+  theme(axis.line.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.title.x=element_blank(),
+        text = element_text(size=16),
+        axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
+        legend.key.size = unit(1,"cm"))+
+  guides(linetype = guide_legend(override.aes = list(linesize = 1)))
+
+
+med_occ_plot <- join_df %>%
+  filter(psi == 0.43) %>%
+  mutate(sim_type = paste0(algo, ", ", "phi = ", phi)) %>%
+  ggplot(aes(x = time, y = mean)) +
+  #geom_ribbon(aes(ymin = lower, ymax = upper, fill = sim_num), alpha = 0.3) +
+  geom_line(aes(group = sim_num, linetype = sim_type, color = sim_type), linewidth = 0.75) +
+  theme_classic() +
+  ylim(c(0.3, 0.457)) +
+  ylab("Occupancy") +
+  #facet_wrap(~emu, scales = "free") +
+  scale_colour_discrete("", type = rep(c("#c9673a", "#28587B"), 2)) +
+  scale_linetype_manual("", values=c(2,2,1,1)) +
+  geom_hline(yintercept = 0.43, linetype = "dashed", color = "grey") +
+  geom_hline(yintercept = 0.3225, linetype = "dashed", color = "grey") +
+  scale_x_continuous(breaks = c(2, 4, 6, 8, 10)) +
+  theme(axis.line.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.title.x=element_blank(),
+        text = element_text(size=16),
+        axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
+        legend.key.size = unit(1,"cm"))+
+  guides(linetype = guide_legend(override.aes = list(linesize = 1)))
+
+
+low_occ_plot <- join_df %>%
+  filter(psi == 0.03) %>%
+  mutate(sim_type = paste0(algo, ", ", "phi = ", phi)) %>%
+  ggplot(aes(x = time, y = mean)) +
+  #geom_ribbon(aes(ymin = lower, ymax = upper, fill = sim_num), alpha = 0.3) +
+  geom_line(aes(group = sim_num, linetype = sim_type, color = sim_type), linewidth = 0.75) +
+  theme_classic() +
+  #ylim(c(0.02, 0.032)) +
+  ylab("Occupancy") +
+  xlab("Time") +
+  #facet_wrap(~emu, scales = "free") +
+  scale_colour_discrete("", type = rep(c("#c9673a", "#28587B"), 2)) +
+  scale_linetype_manual("", values=c(2,2,1,1)) +
+  geom_hline(yintercept = 0.03, linetype = "dashed", color = "grey") +
+  geom_hline(yintercept = 0.0225, linetype = "dashed", color = "grey") +
+  scale_x_continuous(breaks = c(2, 4, 6, 8, 10)) +
+  scale_y_continuous(breaks = c(0.02, 0.025, 0.03), limits = c(0.02, 0.032)) +
+  theme(text = element_text(size=16),
+        axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
+        axis.title.x = element_text(margin = margin(t = 20, r = 0, b = 0, l = 0)),
+        legend.key.size = unit(1,"cm")) +
+  guides(linetype = guide_legend(override.aes = list(linesize = 1)))
+
+occ_trend_plot <- high_occ_plot + plot_spacer() + med_occ_plot + plot_spacer() + low_occ_plot +
+  plot_layout(ncol = 1, guides = "collect",
+              heights = c(2,.1, 2, .1, 2), axis_titles =  "collect")
+
+ggsave(here::here("figures/occ_trend_plot.jpeg"), occ_trend_plot, width = 7.6, height = 11)
