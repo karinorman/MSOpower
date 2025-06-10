@@ -43,9 +43,9 @@ hier_power_plt <- hier_plot_df %>%
   arrange(psi) %>%
   mutate(sim_type = paste0(simulation_scenario, ": psi = ", psi, ", phi = ", phi, ", p = ", p)) %>%
   ggplot(aes(x = total_samp, y = success)) +
-  geom_line(aes(color = sim_type, linetype = sim_type), linewidth = 1) +
+  geom_line(aes(color = sim_type, linetype = sim_type), linewidth = 0.75) +
   theme_classic() +
-  scale_colour_discrete("", type = rep(c("#8A6240", "#87A96B", "#28587B", "#76BED0"), each = 2)) +
+  scale_colour_discrete("", type = rep(c("#8A6240", "#87A96B", "#28587B", "#c9673a"), each = 2)) +
   scale_linetype_manual("", values=c(2,1,2,1,2,1,2,1)) +
   geom_hline(yintercept = 0.9, color = "darkgrey", linetype = "dashed", linewidth = 1) +
   geom_vline(xintercept = 2000, color = "darkgrey", linewidth = 1) +
@@ -75,10 +75,10 @@ power_plt <- power_plot_df %>%
     emu == "UGM" ~ "Upper Gila Mountains"
   )) %>%
   ggplot(aes(x = total_n, y = success)) +
-  geom_line(aes(color = sim_type, linetype = sim_type), linewidth = 1) +
+  geom_line(aes(color = sim_type, linetype = sim_type), linewidth = 0.75) +
   facet_wrap(~unit, scales = "free_x") +
   theme_classic() +
-  scale_colour_discrete("", type = rep(c("#8A6240", "#87A96B", "#28587B", "#76BED0"), each = 2)) +
+  scale_colour_discrete("", type = rep(c("#8A6240", "#87A96B", "#28587B", "#c9673a"), each = 2)) +
   scale_linetype_manual("", values=c(2,1,2,1,2,1,2,1)) +
   geom_hline(yintercept = 0.9, color = "darkgrey", linetype = "dashed", linewidth = 1) +
   theme(legend.position = "inside", legend.position.inside = c(0.85, 0.25),
