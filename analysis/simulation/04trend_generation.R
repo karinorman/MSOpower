@@ -79,6 +79,7 @@ true_occ_stats_recurs %>%
   geom_hline(yintercept = 0.43, linetype = "dotted") +
   geom_hline(yintercept = 0.3225, linetype = "dotted")
 
+usethis::use_data(true_occ_stats_recurs)
 
 ##############################################
 ######### Simulate using equilibrium #########
@@ -148,7 +149,7 @@ true_occ_stats_equil %>%
   geom_hline(yintercept = 0.03, linetype = "dotted") +
   geom_hline(yintercept = 0.0225, linetype = "dotted")
 
-
+usethis::use_data(true_occ_stats_equil)
 
 ####### Joined Plot #######
 
