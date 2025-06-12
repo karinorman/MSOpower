@@ -2,6 +2,8 @@ library(dplyr)
 library(tidyr)
 library(purrr)
 library(furrr)
+library(ggplot2)
+library(patchwork)
 
 source(here::here("R/sim_dataset.R"))
 source(here::here("R/sim_data_equilib.R"))
@@ -162,13 +164,13 @@ join_df <- bind_rows(true_occ_stats_recurs %>%
 
 high_occ_plot <- join_df %>%
   filter(psi == 0.6) %>%
-  mutate(sim_type = paste0(algo, ", ", "phi = ", phi)) %>%
+  mutate(sim_type = paste0(algo, ", ", "\u03C6 = ", phi)) %>%
   ggplot(aes(x = time, y = mean)) +
   #geom_ribbon(aes(ymin = lower, ymax = upper, fill = sim_num), alpha = 0.3) +
   geom_line(aes(group = sim_num, linetype = sim_type, color = sim_type), linewidth = 0.75) +
   theme_classic() +
   ylim(c(0.4, 0.65)) +
-  ylab("Occupancy") +
+  ylab("Occupancy, \u03A8") +
   #facet_wrap(~emu, scales = "free") +
   scale_colour_discrete("", type = rep(c("#c9673a", "#28587B"), 2)) +
   scale_linetype_manual("", values=c(2,2,1,1)) +
@@ -187,13 +189,13 @@ high_occ_plot <- join_df %>%
 
 med_occ_plot <- join_df %>%
   filter(psi == 0.43) %>%
-  mutate(sim_type = paste0(algo, ", ", "phi = ", phi)) %>%
+  mutate(sim_type = paste0(algo, ", ", "\u03C6 = ", phi)) %>%
   ggplot(aes(x = time, y = mean)) +
   #geom_ribbon(aes(ymin = lower, ymax = upper, fill = sim_num), alpha = 0.3) +
   geom_line(aes(group = sim_num, linetype = sim_type, color = sim_type), linewidth = 0.75) +
   theme_classic() +
   ylim(c(0.3, 0.457)) +
-  ylab("Occupancy") +
+  ylab("Occupancy, \u03A8") +
   #facet_wrap(~emu, scales = "free") +
   scale_colour_discrete("", type = rep(c("#c9673a", "#28587B"), 2)) +
   scale_linetype_manual("", values=c(2,2,1,1)) +
@@ -212,13 +214,13 @@ med_occ_plot <- join_df %>%
 
 low_occ_plot <- join_df %>%
   filter(psi == 0.03) %>%
-  mutate(sim_type = paste0(algo, ", ", "phi = ", phi)) %>%
+  mutate(sim_type = paste0(algo, ", ", "\u03C6 = ", phi)) %>%
   ggplot(aes(x = time, y = mean)) +
   #geom_ribbon(aes(ymin = lower, ymax = upper, fill = sim_num), alpha = 0.3) +
   geom_line(aes(group = sim_num, linetype = sim_type, color = sim_type), linewidth = 0.75) +
   theme_classic() +
   #ylim(c(0.02, 0.032)) +
-  ylab("Occupancy") +
+  ylab("Occupancy, \u03A8") +
   xlab("Time") +
   #facet_wrap(~emu, scales = "free") +
   scale_colour_discrete("", type = rep(c("#c9673a", "#28587B"), 2)) +
