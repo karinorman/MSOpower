@@ -113,7 +113,7 @@ ggsave(here::here("figures/power_plot_join.jpeg"), power_join, width = 23, heigh
 hier_power_p4 <- hier_plot_df %>%
   arrange(psi) %>%
   filter(p == 0.4) %>%
-  mutate(sim_type = paste0("psi = ", psi, ", phi = ", phi)) %>%
+  mutate(sim_type = paste0("\u03A8 = ", psi, ", \u03C6 = ", phi)) %>%
   ggplot(aes(x = total_samp, y = success)) +
   geom_line(aes(color = sim_type), linewidth = 0.75) +
   theme_classic() +
@@ -131,7 +131,7 @@ hier_power_p4 <- hier_plot_df %>%
 hier_power_p8 <- hier_plot_df %>%
   arrange(psi) %>%
   filter(p == 0.8) %>%
-  mutate(sim_type = paste0("psi = ", psi, ", phi = ", phi)) %>%
+  mutate(sim_type = paste0("\u03A8 = ", psi, ", \u03C6 = ", phi)) %>%
   ggplot(aes(x = total_samp, y = success)) +
   geom_line(aes(color = sim_type), linewidth = 0.75) +
   theme_classic() +
@@ -150,7 +150,7 @@ power_p4 <- power_plot_df %>%
   select(-sim_id) %>%
   filter(p == 0.4) %>%
   left_join(sim_scenarios_table, by = c("phi", "p", "psi" = "psi_high")) %>%
-  mutate(sim_type = paste0(simulation_scenario, ": psi = ", psi, ", phi = ", phi, ", p = ", p)) %>%
+  mutate(sim_type = paste0(simulation_scenario, ": \u03A8 = ", psi, ", \u03C6 = ", phi, ", p = ", p)) %>%
   mutate(unit = case_when(
     emu == "BRE" ~ "Basin & Range - East",
     emu == "BRW" ~ "Basin & Range - West",
@@ -184,7 +184,7 @@ power_p8 <- power_plot_df %>%
   select(-sim_id) %>%
   filter(p == 0.8) %>%
   left_join(sim_scenarios_table, by = c("phi", "p", "psi" = "psi_high")) %>%
-  mutate(sim_type = paste0(simulation_scenario, ": psi = ", psi, ", phi = ", phi, ", p = ", p)) %>%
+  mutate(sim_type = paste0(simulation_scenario, ": \u03A8 = ", psi, ", \u03C6 = ", phi, ", p = ", p)) %>%
   mutate(unit = case_when(
     emu == "BRE" ~ "Basin & Range - East",
     emu == "BRW" ~ "Basin & Range - West",
