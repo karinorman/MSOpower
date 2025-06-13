@@ -42,7 +42,7 @@ hier_plot_df <- hier_plot_df %>%
 
 hier_power_plt <- hier_plot_df %>%
   arrange(psi) %>%
-  mutate(sim_type = paste0(simulation_scenario, ": psi = ", psi, ", phi = ", phi, ", p = ", p)) %>%
+  mutate(sim_type = paste0(simulation_scenario, ":  \u03A8 = ", psi, ", \u03C6 = ", phi, ", p = ", p)) %>%
   ggplot(aes(x = total_samp, y = success)) +
   geom_line(aes(color = sim_type, linetype = sim_type), linewidth = 0.75) +
   theme_classic() +
@@ -67,7 +67,7 @@ power_plot_df <- read.csv(here::here("data/power_plot_df.csv"))
 power_plt <- power_plot_df %>%
   select(-sim_id) %>%
   left_join(sim_scenarios_table, by = c("phi", "p", "psi" = "psi_high")) %>%
-  mutate(sim_type = paste0(simulation_scenario, ": psi = ", psi, ", phi = ", phi, ", p = ", p)) %>%
+  mutate(sim_type = paste0(simulation_scenario, ":  \u03A8 = ", psi, ", \u03C6 = ", phi, ", p = ", p)) %>%
   mutate(unit = case_when(
     emu == "BRE" ~ "Basin & Range - East",
     emu == "BRW" ~ "Basin & Range - West",
