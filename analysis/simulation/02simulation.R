@@ -126,7 +126,7 @@ simn <- 200
 #single_rep <- purrr::pmap(sim_scenarios_emu %>% select(-sim_id), sim_dataset, nyear = nyear, n_vis = 2) %>% set_names(sim_scenarios_emu$sim_id)
 
 set.seed(42)
-plan(multisession, workers = 78)
+plan(multisession, workers = 70)
 sim_list <- map(1:simn, ~furrr::future_pmap(sim_scenarios_emu %>%
                                               select(-sim_id, -n_samp), sim_dataset, nyear = nyear, n_vis = 2) %>%
                   set_names(sim_scenarios_emu$sim_id),
@@ -149,29 +149,29 @@ true_occ <- map_dfr(sim_scenarios_emu$sim_id, function(emu){
     mutate(sim_id = emu)
 })
 
-true_occ_stats <- true_occ %>%
-  pivot_longer(starts_with("t"), names_to = "time", values_to = "occ") %>%
-  select(-rep) %>%
-  group_by(sim_id, time) %>%
-  summarize(mean = mean(occ),
-            lower = mean(occ) - qt(1- 0.05/2, (n() - 1))*sd(occ)/sqrt(n()),
-            upper = mean(occ) + qt(1- 0.05/2, (n() - 1))*sd(occ)/sqrt(n())) %>%
-  ungroup() %>%
-  separate(sim_id, c("emu", "sim_num"), sep = "_", remove = FALSE) %>%
-  mutate(time = as.numeric(stringr::str_remove(time, "t"))) %>%
-  left_join(sim_scenarios_emu)
-
-# let's look at the annual reduction in survival for different scenarios
-phi_red <- map_dfr(sim_scenarios_emu$sim_id, function(emu){
-  map_dfr(1:simn, ~pluck(sim_list_emu, emu, .x, "phi_reduction") %>%
-            data.frame(year = 2:9, phi_reduction = .) %>%
-            mutate(rep = .x)) %>%
-    mutate(sim_id = emu)
-}) %>%
-  group_by(sim_id, year) %>%
-  summarize(phi_reduction = mean(phi_reduction)) %>%
-  mutate(phi_multiplier = phi_reduction, phi_reduction = 1- phi_multiplier)
-
+# true_occ_stats <- true_occ %>%
+#   pivot_longer(starts_with("t"), names_to = "time", values_to = "occ") %>%
+#   select(-rep) %>%
+#   group_by(sim_id, time) %>%
+#   summarize(mean = mean(occ),
+#             lower = mean(occ) - qt(1- 0.05/2, (n() - 1))*sd(occ)/sqrt(n()),
+#             upper = mean(occ) + qt(1- 0.05/2, (n() - 1))*sd(occ)/sqrt(n())) %>%
+#   ungroup() %>%
+#   separate(sim_id, c("emu", "sim_num"), sep = "_", remove = FALSE) %>%
+#   mutate(time = as.numeric(stringr::str_remove(time, "t"))) %>%
+#   left_join(sim_scenarios_emu)
+# 
+# # let's look at the annual reduction in survival for different scenarios
+# phi_red <- map_dfr(sim_scenarios_emu$sim_id, function(emu){
+#   map_dfr(1:simn, ~pluck(sim_list_emu, emu, .x, "phi_reduction") %>%
+#             data.frame(year = 2:9, phi_reduction = .) %>%
+#             mutate(rep = .x)) %>%
+#     mutate(sim_id = emu)
+# }) %>%
+#   group_by(sim_id, year) %>%
+#   summarize(phi_reduction = mean(phi_reduction)) %>%
+#   mutate(phi_multiplier = phi_reduction, phi_reduction = 1- phi_multiplier)
+# 
 
 #This returns giant dataframe, hasn't been processed into encounter histories yet
 # obs_occ <- map_dfr(sim_scenarios_emu$sim_id, function(emu){
@@ -182,84 +182,84 @@ phi_red <- map_dfr(sim_scenarios_emu$sim_id, function(emu){
 ###########################################
 ########## Check Realized Trend ###########
 ###########################################
-library(lme4)
-library(broom.mixed)
-
-true_occ_model_df <- true_occ %>%
-  pivot_longer(starts_with("t"), names_to = "time", values_to = "occ") %>%
-  mutate(time = as.numeric(stringr::str_remove(time, "t")))
-
-
-model_fit_df <- true_occ_model_df %>%
-  group_by(sim_id) %>%
-  nest() %>%
-  # fit model for each sim_id and cat variable
-  mutate(model = map(data, ~lmer(occ ~ time + (1|rep), data = .x) %>% broom.mixed::tidy())) %>%
-  select(-data) %>%
-  unnest(model) %>%
-  # get slope and intercept for mean effect
-  filter(term %in% c("time", "(Intercept)")) %>%
-  select(-std.error, -statistic, -group, -effect) %>%
-  pivot_wider(names_from = term, values_from = estimate) %>%
-  rename(intercept = `(Intercept)`) %>%
-  mutate(t10 = intercept + (time * 10),
-         t1 =  intercept + time,
-         percent_change = ((t10 - t1)/abs(t1))) %>%
-  separate(sim_id, c("emu", "sim_num"), sep = "_", remove = FALSE) %>%
-  left_join(sim_scenarios_emu)
+# library(lme4)
+# library(broom.mixed)
+# 
+# true_occ_model_df <- true_occ %>%
+#   pivot_longer(starts_with("t"), names_to = "time", values_to = "occ") %>%
+#   mutate(time = as.numeric(stringr::str_remove(time, "t")))
+# 
+# 
+# model_fit_df <- true_occ_model_df %>%
+#   group_by(sim_id) %>%
+#   nest() %>%
+#   # fit model for each sim_id and cat variable
+#   mutate(model = map(data, ~lmer(occ ~ time + (1|rep), data = .x) %>% broom.mixed::tidy())) %>%
+#   select(-data) %>%
+#   unnest(model) %>%
+#   # get slope and intercept for mean effect
+#   filter(term %in% c("time", "(Intercept)")) %>%
+#   select(-std.error, -statistic, -group, -effect) %>%
+#   pivot_wider(names_from = term, values_from = estimate) %>%
+#   rename(intercept = `(Intercept)`) %>%
+#   mutate(t10 = intercept + (time * 10),
+#          t1 =  intercept + time,
+#          percent_change = ((t10 - t1)/abs(t1))) %>%
+#   separate(sim_id, c("emu", "sim_num"), sep = "_", remove = FALSE) %>%
+#   left_join(sim_scenarios_emu)
 
 
 
 ###########################################
 ########### Visualize True Occ ############
 ###########################################
-library(ggplot2)
-
-true_occ_plot_df <- true_occ_stats %>%
-  group_by(phi, psi, p) %>%
-  mutate(line_id = cur_group_id()) %>%
-  left_join(emu_sample_sizes %>% select(emu, n_samp))
-
-true_occ_plot_df %>%
-  group_by(emu, n_samp) %>%
-  slice(1) %>%
-  #filter(percent_samp == 0.5) %>%
-  ggplot(aes(x = time, y = mean)) +
-  geom_ribbon(aes(ymin = lower, ymax = upper, fill = as.factor(line_id)), alpha = 0.3) +
-  geom_line(aes(color = as.factor(line_id))) +
-  theme_classic() +
-  facet_wrap(~emu, scales = "free") +
-  scale_color_discrete(name = "Sim Scenario") +
-  scale_fill_discrete(name = "Sim Scenario") +
-  geom_hline(yintercept = 0.03, linetype = "dotted") +
-  geom_hline(yintercept = 0.0225, linetype = "dotted") +
-  geom_hline(yintercept = 0.2, linetype = "dotted") +
-  geom_hline(yintercept = 0.15, linetype = "dotted") +
-  geom_hline(yintercept = 0.43, linetype = "dotted") +
-  geom_hline(yintercept = 0.3225, linetype = "dotted")
-
-true_occ_plot_df %>%
-  group_by(emu, n_samp) %>%
-  slice(1) %>%
-  filter(psi == 0.03) %>%
-  ggplot(aes(x = time, y = mean)) +
-  geom_ribbon(aes(ymin = lower, ymax = upper, fill = as.factor(line_id)), alpha = 0.3) +
-  geom_line(aes(color = as.factor(line_id))) +
-  theme_classic() +
-  facet_wrap(~emu, scales = "free") +
-  scale_color_discrete(name = "Sim Scenario") +
-  scale_fill_discrete(name = "Sim Scenario") +
-  geom_hline(yintercept = 0.03, linetype = "dotted") +
-  geom_hline(yintercept = 0.0225, linetype = "dotted")
-
-# visualize annual reduction in survival to get the desired trend
-phi_red %>%
-  left_join(sim_scenarios_emu) %>%
-  separate(sim_id, c("emu", "sim_num"), sep = "_", remove = FALSE) %>%
-  filter(p == 0.8) %>%
-  ggplot(aes(x = year, y = phi_reduction)) +
-  geom_line(aes(color = sim_num)) +
-  facet_wrap(~emu, scales = "free")
+# library(ggplot2)
+# 
+# true_occ_plot_df <- true_occ_stats %>%
+#   group_by(phi, psi, p) %>%
+#   mutate(line_id = cur_group_id()) %>%
+#   left_join(emu_sample_sizes %>% select(emu, n_samp))
+# 
+# true_occ_plot_df %>%
+#   group_by(emu, n_samp) %>%
+#   slice(1) %>%
+#   #filter(percent_samp == 0.5) %>%
+#   ggplot(aes(x = time, y = mean)) +
+#   geom_ribbon(aes(ymin = lower, ymax = upper, fill = as.factor(line_id)), alpha = 0.3) +
+#   geom_line(aes(color = as.factor(line_id))) +
+#   theme_classic() +
+#   facet_wrap(~emu, scales = "free") +
+#   scale_color_discrete(name = "Sim Scenario") +
+#   scale_fill_discrete(name = "Sim Scenario") +
+#   geom_hline(yintercept = 0.03, linetype = "dotted") +
+#   geom_hline(yintercept = 0.0225, linetype = "dotted") +
+#   geom_hline(yintercept = 0.2, linetype = "dotted") +
+#   geom_hline(yintercept = 0.15, linetype = "dotted") +
+#   geom_hline(yintercept = 0.43, linetype = "dotted") +
+#   geom_hline(yintercept = 0.3225, linetype = "dotted")
+# 
+# true_occ_plot_df %>%
+#   group_by(emu, n_samp) %>%
+#   slice(1) %>%
+#   filter(psi == 0.03) %>%
+#   ggplot(aes(x = time, y = mean)) +
+#   geom_ribbon(aes(ymin = lower, ymax = upper, fill = as.factor(line_id)), alpha = 0.3) +
+#   geom_line(aes(color = as.factor(line_id))) +
+#   theme_classic() +
+#   facet_wrap(~emu, scales = "free") +
+#   scale_color_discrete(name = "Sim Scenario") +
+#   scale_fill_discrete(name = "Sim Scenario") +
+#   geom_hline(yintercept = 0.03, linetype = "dotted") +
+#   geom_hline(yintercept = 0.0225, linetype = "dotted")
+# 
+# # visualize annual reduction in survival to get the desired trend
+# phi_red %>%
+#   left_join(sim_scenarios_emu) %>%
+#   separate(sim_id, c("emu", "sim_num"), sep = "_", remove = FALSE) %>%
+#   filter(p == 0.8) %>%
+#   ggplot(aes(x = year, y = phi_reduction)) +
+#   geom_line(aes(color = sim_num)) +
+#   facet_wrap(~emu, scales = "free")
 
 ###########################################
 ########### Sampling Protocol ############
@@ -442,7 +442,7 @@ model_check <- function(high_name, low_name, sample_size, repn, high_occ, low_oc
 #pwr_check <- model_check(high_name = "BRE_21", low_name = "BRE_1", sample_size = 40, repn = 1)
 
 set.seed(42)
-plan(multisession, workers = 78)
+plan(multisession, workers = 60)
 power_check_list <- furrr::future_pmap(sim_map_occ %>%
                                          select(high_name, low_name, sample_size, repn = rep, high_occ, low_occ), model_check,
                                        .options=furrr_options(seed = TRUE))
