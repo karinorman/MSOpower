@@ -149,7 +149,7 @@ usethis::use_data(nfs_road_distance)
 min_distance <- road_distance %>%
   rename(tigris_dist = distance) %>%
   left_join(nfs_road_distance %>%
-              rename(nfs_dist = distance)) %>% 
+              rename(nfs_dist = distance)) %>%
   rowwise() %>%
   mutate(road_distance = min(tigris_dist, nfs_dist)) %>%
   select(hex_id, road_distance)
@@ -159,4 +159,48 @@ hex_metadata <- sample_frame %>%
   left_join(min_distance)
 
 readr::write_csv(hex_metadata, here::here("data/hex_metadata.csv"))
+
+##############################
+## Get stats about sample ###
+########### frame ###########
+##############################
+emus <- st_read(here::here("data/MSO_EMUs/MSO_EMUs.shp")) %>%
+  select(UNIT) %>%
+  st_transform(crs = 4326)
+
+sample_frame_sf <- grid_sample_frame %>%
+  filter(include_patch == "yes") %>%
+  # label landcovers as high or low occupancy
+  mutate(occupancy = case_when(
+    veg_type_landfire == "Madrean Lower Montane Pine-Oak Forest and Woodland" ~ "high",
+    veg_type_landfire == "Southern Rocky Mountain Dry-Mesic Montane Mixed Conifer Forest and Woodland" ~ "high",
+    veg_type_landfire == "Southern Rocky Mountain Ponderosa Pine Woodland" ~ "high",
+    veg_type_landfire == "Madrean Upper Montane Conifer-Oak Forest and Woodland" ~ "high",
+    veg_type_landfire == "Rocky Mountain Subalpine Dry-Mesic Spruce-Fir Forest and Woodland" ~ "low",
+    veg_type_landfire == "Rocky Mountain Aspen Forest and Woodland" ~ "low",
+    veg_type_landfire == "Inter-Mountain Basins Aspen-Mixed Conifer Forest and Woodland" ~ "low",
+    veg_type_landfire == "Southern Rocky Mountain Ponderosa Pine Savanna" ~ "low",
+    veg_type_landfire == "Inter-Mountain Basins Subalpine Limber-Bristlecone Pine Woodland" ~ "low",
+    veg_type_landfire == "Rocky Mountain Bigtooth Maple Ravine Woodland" ~ "low",
+    veg_type_landfire == "Rocky Mountain Subalpine Mesic-Wet Spruce-Fir Forest and Woodland" ~ "low",
+    veg_type_landfire == "Rocky Mountain Subalpine-Montane Riparian Woodland" ~ "low",
+    veg_type_landfire == "Rocky Mountain Lodgepole Pine Forest" ~ "low",
+    veg_type_landfire == "Rocky Mountain Subalpine-Montane Limber-Bristlecone Pine Woodland" ~ "low",
+    veg_type_landfire == "Rocky Mountain Lodgepole Pine Forest" ~ "low",
+    veg_type_landfire == "Rocky Mountain Subalpine-Montane Limber-Bristlecone Pine Woodland" ~ "low",
+    veg_type_landfire == "Southern Rocky Mountain Mesic Montane Mixed Conifer Forest and Woodland" ~ "high",
+    veg_type_landfire == "Madrean Pinyon-Juniper Woodland" ~ "low",
+    .default = NA
+  ))
+
+emu_area <- sum(st_area(emus))
+sampleframe_area <- sum(st_area(st_as_sf(sample_frame_sf)))
+high_sampleframe_area <- sum(st_area(st_as_sf(sample_frame_sf %>% filter(occupancy == "high"))))
+
+
+emu_coverage <- sampleframe_area/emu_area
+perc_high_occ <- high_sampleframe_area/sampleframe_area
+
+
+
 

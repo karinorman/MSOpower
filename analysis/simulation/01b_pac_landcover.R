@@ -85,6 +85,11 @@ grid_footprint_sf <- st_as_sf(sample_grid_footprint)
 grid_pacs_int <- pacs_sf %>%
   mutate(intersects_grid = st_intersects(pacs_sf, grid_footprint_sf) %>% as.matrix() %>% as.vector())
 
+# what percent of PAC's are included in the grid
+dim(grid_pacs_int %>% filter(intersects_grid == FALSE))[1]/dim(grid_pacs_int)[1]
+
+
+# Let's look at the PACs not contained in the sampling frame, and what their landcover types are
 excluded_pacs <- grid_pacs_int %>%
   dplyr::filter(intersects_grid == FALSE) %>%
   vect()
