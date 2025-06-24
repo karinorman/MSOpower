@@ -91,14 +91,11 @@ sim_scenarios_emu <- bind_rows(sim_scenarios %>% mutate(emu = "BRE"),
 sample_size_df <- emu_ratio %>%
   filter(occupancy == "high") %>%
   select(emu, hex_count) %>%
-  mutate(log_max_samp = ifelse(hex_count > 2500, ceiling(log(2500)), log(hex_count))) %>%
+  mutate(log_max_samp = ifelse(hex_count > 2000, log(2000), log(hex_count))) %>%
   rowwise() %>%
-  mutate(log_samp = list(seq(2.3, log_max_samp, by = 0.5))) %>%
+  mutate(log_samp = list(c(seq(2.3, log_max_samp, by = 0.5), log_max_samp))) %>%
   unnest(log_samp) %>%
-  mutate(samp_size = round(exp(log_samp))) %>%
-  # for smaller emu's, add a sample that's 100% of hexes
-  bind_rows(tibble(emu = "BRE", hex_count = 719, samp_size = 719),
-            tibble(emu = "BRW", hex_count = 329, samp_size = 329),)
+  mutate(samp_size = round(exp(log_samp))) 
 
 emu_sample_sizes <- emu_ratio %>%
   filter(occupancy == "high") %>%
@@ -132,6 +129,8 @@ sim_list <- map(1:simn, ~furrr::future_pmap(sim_scenarios_emu %>%
                   set_names(sim_scenarios_emu$sim_id),
                 .options=furrr_options(seed = TRUE)) %>%
   set_names(paste0("rep", 1:simn))
+
+usethis::use_data(sim_list)
 
 # reorder so top level of nested list is a sim scenario
 sim_list_emu <- map(sim_scenarios_emu$sim_id, function(emu) {
@@ -427,15 +426,14 @@ model_check <- function(high_name, low_name, sample_size, repn, high_occ, low_oc
     mutate(perc_change = (t10-t1)/t1) %>%
     pull(perc_change)
 
-  check_dist <- between(true_trend, min(post$perc_change),max(post$perc_change)) & !between(0, min(post$perc_change),max(post$perc_change))
-  #check_dist_null <- between(true_trend, min(post_null$perc_change),max(post_null$perc_change)) & !between(0, min(post_null$perc_change),max(post_null$perc_change))
+  #check_dist <- between(true_trend, min(post$perc_change),max(post$perc_change)) & !between(0, min(post$perc_change),max(post$perc_change))
 
   return(list("power_check" = data.frame("sim_id" = high_name, "rep" = repn, "low_n" = low_n, "high_n" = high_n,
-                                         "true_perc_change" = true_trend, "est_perc_change" = mean(post$perc_change), #"est_perc_change_null" = mean(post_null$perc_change),
-                                         "success" = check_dist, "samps_under" = sum(true_trend > post$perc_change),
+                                         "true_perc_change" = true_trend, "est_perc_change" = mean(post$perc_change),
+                                         #"success" = check_dist,
+                                         "samps_under" = sum(true_trend > post$perc_change),
                                          "samps_over" = sum(true_trend < post$perc_change)),
-              "posterior" = post#,
-              #"posterior_null" = post_null
+              "posterior" = post
   ))
 }
 
@@ -447,25 +445,45 @@ power_check_list <- furrr::future_pmap(sim_map_occ %>%
                                          select(high_name, low_name, sample_size, repn = rep, high_occ, low_occ), model_check,
                                        .options=furrr_options(seed = TRUE))
 
-#map(1:simn, function(x){ furrr::future_pmap(sim_map, model_check, repn = x, .options=furrr_options(seed = TRUE))})
 
 # get the pieces as two seperate dataframes
 power_check_df <- map_dfr(1:length(power_check_list), ~pluck(power_check_list, .x, "power_check"))
-power_check_post_df <- map_dfr(1:length(power_check_list), ~pluck(power_check_list, .x, "posterior"))
+posterior_df <- map_dfr(1:length(power_check_list), ~pluck(power_check_list, .x, "posterior"))
 
 # save out so we don't have to re run
 readr::write_csv(power_check_df, here::here("data/power_check_df.csv"))
-readr::write_csv(power_check_post_df, here::here("data/power_check_post_df.csv"))
+readr::write_csv(posterior_df, here::here("data/posterior_dff.csv"))
 
-power_plot_df <- power_check_df %>%
-  rowwise() %>%
-  mutate(total_n = sum(low_n, high_n, na.rm = TRUE)) %>%
+# build checks directly from sim outputs
+ci_df <- posteriors %>%
+  select(sim_id, rep, perc_change) %>%
+  group_by(sim_id, rep) %>%
+  summarize(CI_low = as.data.frame(ci(perc_change, method = "ETI"))$CI_low,
+            CI_high = as.data.frame(ci(perc_change, method = "ETI"))$CI_high) %>%
   ungroup() %>%
-  group_by(sim_id, total_n) %>%
-  summarize(across(c(success), ~sum(.x)/simn)) %>%
-  left_join(sim_scenarios_emu) %>%
-  group_by(psi, p, phi) %>%
-  mutate(line_id = cur_group_id()) %>%
-  separate(sim_id, c("emu", "sim_num"), sep = "_", remove = FALSE)
+  mutate(width = CI_high - CI_low)
 
-readr::write_csv(power_plot_df, here::here("data/power_plot_df.csv"))
+power_eval <- power_check_df %>% 
+  select(sim_id, rep, true_perc_change, est_perc_change) %>%
+  mutate(bias = est_perc_change - true_perc_change) %>%
+  left_join(ci_df) %>%
+  rowwise() %>%
+  mutate(ci_check = between(true_perc_change, CI_low, CI_high) & !between(0,  CI_low, CI_high)) %>%
+  select(sim_id, rep, bias, width, ci_check) %>%
+  group_by(sim_id) %>%
+  summarize(bias = mean(bias),
+            width = mean(width),
+            ci_check = sum(ci_check)/simn)
+
+# power_plot_df <- power_check_df %>%
+#   rowwise() %>%
+#   mutate(total_n = sum(low_n, high_n, na.rm = TRUE)) %>%
+#   ungroup() %>%
+#   group_by(sim_id, total_n) %>%
+#   summarize(across(c(success), ~sum(.x)/simn)) %>%
+#   left_join(sim_scenarios_emu) %>%
+#   group_by(psi, p, phi) %>%
+#   mutate(line_id = cur_group_id()) %>%
+#   separate(sim_id, c("emu", "sim_num"), sep = "_", remove = FALSE)
+# 
+# readr::write_csv(power_plot_df, here::here("data/power_plot_df.csv"))
