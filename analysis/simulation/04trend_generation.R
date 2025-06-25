@@ -30,7 +30,6 @@ simn <- 100
 ########### trend approach #############
 ########################################
 
-set.seed(42)
 plan(multisession, workers = 14)
 sim_list_recurs <- map(1:simn, ~furrr::future_pmap(sim_scenarios %>% select(-sim_num, -occupancy),
                                                    sim_dataset, nyear = 10, n_vis = 2,
@@ -88,7 +87,6 @@ usethis::use_data(true_occ_stats_recurs)
 ############## trend approach ################
 ##############################################
 
-set.seed(42)
 plan(multisession, workers = 14)
 sim_list_equil <- map(1:simn, ~furrr::future_pmap(sim_scenarios %>% select(-sim_num, -occupancy),
                                                    sim_dataset_equil, nyear = 10, n_vis = 2,
