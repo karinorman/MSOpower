@@ -202,7 +202,12 @@ high_occ_plot <- join_df %>%
         axis.title.x=element_blank(),
         text = element_text(size=16),
         axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
-        legend.key.size = unit(1,"cm"))+
+        legend.key.size = unit(1,"cm"),
+        legend.key = element_blank(),
+        legend.background = element_blank(),
+        # plot.margin = margin(1,6,1,1, "cm"),
+        # legend.position = c(1.35, .5)
+        ) +
   guides(linetype = guide_legend(override.aes = list(linesize = 1)))
 
 
@@ -232,7 +237,12 @@ med_occ_plot <- join_df %>%
         axis.title.x=element_blank(),
         text = element_text(size=16),
         axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
-        legend.key.size = unit(1,"cm"))+
+        legend.key.size = unit(1,"cm"),
+        legend.key = element_blank(),
+        legend.background = element_blank(),
+        # plot.margin = margin(1,6,1,1, "cm"),
+        # legend.position = c(1.35, .5)
+        )+
   guides(linetype = guide_legend(override.aes = list(linesize = 1)))
 
 
@@ -263,35 +273,22 @@ low_occ_plot <- join_df %>%
   theme(text = element_text(size=16),
         axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
         axis.title.x = element_text(margin = margin(t = 20, r = 0, b = 0, l = 0)),
-        legend.key.size = unit(1,"cm")) +
+        legend.key.size = unit(1,"cm"),
+        legend.key = element_blank(),
+        legend.background = element_blank(),
+        # plot.margin = margin(1,6,1,1, "cm"),
+        # legend.position = c(1.35, .5)
+        ) +
   guides(linetype = guide_legend(override.aes = list(linesize = 1)))
 
-# design <-
-#   "
-#   A#
-#   B#
-#   CE
-#   B#
-#   D#
-# "
-#
-# list(high_occ_plot,
-#      plot_spacer(),
-#      med_occ_plot,
-#      low_occ_plot,
-#      guide_area()) %>%
-#   wrap_plots(design = design, axis_titles = "collect", guides = "collect")
 
-# this works but legend overlaps
-occ_trend_plot <- (high_occ_plot + plot_spacer() + med_occ_plot + plot_spacer() + low_occ_plot +
-                     plot_layout(ncol = 1, heights = c(2,.1, 2, .1, 2), axis_titles = "collect", guides = "collect"))
+# it fills rows first!!! this is very annoying!!
+occ_trend_plot <- high_occ_plot + plot_spacer() + plot_spacer() +
+  plot_spacer() + plot_spacer() + plot_spacer() +
+  med_occ_plot + plot_spacer() + guide_area() +
+  plot_spacer() + plot_spacer() + plot_spacer() +
+  low_occ_plot + plot_spacer() + plot_spacer() +
+  plot_layout(ncol = 3, nrow = 5, heights = c(2,.1, 2, .1, 2), widths = c(1, 0.1, 1), axis_titles = "collect", guides = "collect")
 
-#
-# occ_trend_plot <- (high_occ_plot / plot_spacer() / med_occ_plot / plot_spacer() / low_occ_plot + plot_layout(heights = c(2,.1, 2, .1, 2))) +
-#   (plot_spacer() / guide_area() / plot_spacer()) + plot_layout(axis_titles = "collect", guides = "collect", ncol = 2, widths = c(3,1))
-#
-# (high_occ_plot / plot_spacer() / med_occ_plot / plot_spacer() / low_occ_plot /
-#     plot_spacer() / plot_spacer() / guide_area() / plot_spacer() / plot_spacer() +
-#     plot_layout(ncol = 2, heights = c(2,.1, 2, .1, 2), axis_titles = "collect", guides = "collect"))
 
-ggsave(here::here("figures/occ_trend_plot.jpeg"), occ_trend_plot, width = 7, height = 11)
+ggsave(here::here("figures/occ_trend_plot.jpeg"), occ_trend_plot, width = 8, height = 11)
