@@ -26,6 +26,8 @@ sim_dataset <- function(psi, phi, sd_phi, sd_gamma, p, n_sites, perc_red, nyear,
 
   # subsequent yearly gammas with noise
   gamma_year <- plogis(logit.gamma.mean + rnorm((nyear-1), 0, sd_gamma))
+  # enforce no probabilities greater than 1
+  gamma_year[gamma_year > 1] <- 1
 
   #if we want occupancy to decline by perc_red over t-1, this is the annual decrease
   annual_perc_red = exp(log(1-perc_red)/(nyear-1))
@@ -63,6 +65,8 @@ sim_dataset <- function(psi, phi, sd_phi, sd_gamma, p, n_sites, perc_red, nyear,
 
   # get noise around phi at each time step drawn from N(phi, sd_phi)
   phi_year<- purrr::map(phi_year, ~rnorm(1, .x, sd_phi)) %>% unlist()
+  # enforce no probabilities greater than 1
+  phi_year[phi_year > 1] <- 1
 
   ### Simulate tocc and obsocc from t = 1 to t = nyear
   ### First use initial values to generate year 1
