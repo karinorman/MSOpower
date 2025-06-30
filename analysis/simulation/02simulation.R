@@ -118,16 +118,16 @@ sim_scenarios_emu <- sim_scenarios_emu %>%
 ###########################################
 
 source(here::here("R/sim_dataset.R"))
-simn <- 200
+simn <- 100
 
 #single_rep <- purrr::pmap(sim_scenarios_emu %>% select(-sim_id), sim_dataset, nyear = nyear, n_vis = 2) %>% set_names(sim_scenarios_emu$sim_id)
 
-set.seed(42)
 plan(multisession, workers = 70)
 sim_list <- map(1:simn, ~furrr::future_pmap(sim_scenarios_emu %>%
-                                              select(-sim_id, -n_samp), sim_dataset, nyear = nyear, n_vis = 2) %>%
-                  set_names(sim_scenarios_emu$sim_id),
-                .options=furrr_options(seed = TRUE)) %>%
+                                              select(-sim_id, -n_samp), sim_dataset, nyear = nyear, n_vis = 2,
+                                            .options=furrr_options(seed = TRUE)) %>%
+                  set_names(sim_scenarios_emu$sim_id)
+) %>%
   set_names(paste0("rep", 1:simn))
 
 usethis::use_data(sim_list)
@@ -298,67 +298,67 @@ sim_map_occ <- sim_map %>%
   unnest(cols = "data")
 
 model_check <- function(high_name, low_name, sample_size, repn, high_occ, low_occ) {
-
+  
   print(c(high_name, repn))
-
+  
   # define sample size for high_n, grab data
   high_obs <- high_occ
   high_n = sample_size
-
+  
   if (!is.na(low_name)){
-
+    
     low_n = round(high_n*(1/3))
     low_obs <- low_occ
-
+    
     if(low_n > n_distinct(low_obs$site_id)){
       low_n = n_distinct(low_obs$site_id)
     }
-
+    
     obs_occ_df <- bind_rows(low_obs %>% filter(site_id %in% sample(unique(low_obs$site_id), low_n, replace = FALSE)),
                             high_obs %>% filter(site_id %in% sample(unique(high_obs$site_id), high_n, replace = FALSE))) %>%
       arrange(visit)
   } else {
-
+    
     low_n = NA
-
+    
     obs_occ_df <- high_obs %>%
       filter(site_id %in% sample(unique(high_obs$site_id), high_n, replace = FALSE)) %>%
       arrange(visit)
   }
-
-
-
+  
+  
+  
   obs_occ_array <- obs_occ_df %>%
     select(-site_id, landtype) %>%
     split(obs_occ_df$visit) %>%
     map(., ~ .x %>% select(-visit, -landtype) %>% as.matrix()) %>%
     simplify2array()
-
+  
   landtype_cov <- obs_occ_df %>%
     filter(visit == 1) %>%
     select(landtype)
-
+  
   year_cov <- matrix(1:nyear, nrow = 1)
   year_cov <- year_cov %x% rep(1, dim(obs_occ_array)[1])
-
+  
   occ.covs <- list(landtype = landtype_cov, year = year_cov)
-
+  
   #fit_model
   n.chains <- 3
   n.thin <- 1
   n.burn <- 500
   n.batch <- 30
   batch.length <- 25
-
-
+  
+  
   z.init <- apply(obs_occ_array, c(1, 2), function(a) as.numeric(sum(a, na.rm = TRUE) > 0))
   inits.list <- list(beta = 0,
                      alpha = 0,
                      z = z.init)
-
+  
   prior.list <- list(beta.normal = list(mean = 0, var = 2.72),
                      alpha.normal = list(mean = 0, var = 2.72))
-
+  
   if (is.na(low_n)){
     test_fit <- tPGOcc(occ.formula = ~ year,
                        det.formula = ~ 1,
@@ -374,7 +374,7 @@ model_check <- function(high_name, low_name, sample_size, repn, high_occ, low_oc
                        n.batch = n.batch,
                        batch.length = batch.length)
   } else{
-
+    
     test_fit <- tPGOcc(occ.formula = ~ year + landtype,
                        det.formula = ~ 1,
                        data = list(y = obs_occ_array, occ.covs = occ.covs),
@@ -388,7 +388,7 @@ model_check <- function(high_name, low_name, sample_size, repn, high_occ, low_oc
                        n.chains = n.chains,
                        n.batch = n.batch,
                        batch.length = batch.length)
-
+    
   }
   # null_fit <- tPGOcc(occ.formula = ~ year,
   #                    det.formula = ~ 1,
@@ -403,7 +403,7 @@ model_check <- function(high_name, low_name, sample_size, repn, high_occ, low_oc
   #                    n.chains = n.chains,
   #                    n.batch = n.batch,
   #                    batch.length = batch.length)
-
+  
   # get the posterior for the estimates
   post <- as.data.frame(test_fit$beta.samples) %>%
     rename(intercept = `(Intercept)`) %>%
@@ -412,7 +412,7 @@ model_check <- function(high_name, low_name, sample_size, repn, high_occ, low_oc
            t1 = plogis(year + intercept),
            perc_change = (t10-t1)/t1) %>%
     mutate(sim_id = high_name, rep = repn)
-
+  
   # post_null <- as.data.frame(null_fit$beta.samples) %>%
   #   rename(intercept = `(Intercept)`) %>%
   #   #mutate(across(everything(), plogis)) %>%
@@ -420,14 +420,14 @@ model_check <- function(high_name, low_name, sample_size, repn, high_occ, low_oc
   #          t1 = plogis(year + intercept),
   #          perc_change = (t10-t1)/t1) %>%
   #   mutate(sim_id = high_name, rep = repn)
-
+  
   true_trend <- true_occ %>%
     filter(sim_id == high_name, rep == repn) %>%
     mutate(perc_change = (t10-t1)/t1) %>%
     pull(perc_change)
-
+  
   #check_dist <- between(true_trend, min(post$perc_change),max(post$perc_change)) & !between(0, min(post$perc_change),max(post$perc_change))
-
+  
   return(list("power_check" = data.frame("sim_id" = high_name, "rep" = repn, "low_n" = low_n, "high_n" = high_n,
                                          "true_perc_change" = true_trend, "est_perc_change" = mean(post$perc_change),
                                          #"success" = check_dist,
@@ -439,8 +439,7 @@ model_check <- function(high_name, low_name, sample_size, repn, high_occ, low_oc
 
 #pwr_check <- model_check(high_name = "BRE_21", low_name = "BRE_1", sample_size = 40, repn = 1)
 
-set.seed(42)
-plan(multisession, workers = 60)
+plan(multisession, workers = 70)
 power_check_list <- furrr::future_pmap(sim_map_occ %>%
                                          select(high_name, low_name, sample_size, repn = rep, high_occ, low_occ), model_check,
                                        .options=furrr_options(seed = TRUE))
@@ -455,25 +454,44 @@ readr::write_csv(power_check_df, here::here("data/power_check_df.csv"))
 readr::write_csv(posterior_df, here::here("data/posterior_dff.csv"))
 
 # build checks directly from sim outputs
-ci_df <- posteriors %>%
+ci_alpha_list <- c(0.5, 0.90, 0.95)
+
+ci_df <- posterior_df %>%
   select(sim_id, rep, perc_change) %>%
   group_by(sim_id, rep) %>%
-  summarize(CI_low = as.data.frame(ci(perc_change, method = "ETI"))$CI_low,
-            CI_high = as.data.frame(ci(perc_change, method = "ETI"))$CI_high) %>%
+  reframe(CI_low = map(ci_alpha_list, 
+                       ~as.data.frame(bayestestR::ci(perc_change, ci = .x, method = "ETI"))$CI_low) %>% unlist(),
+          CI_high = map(ci_alpha_list, 
+                        ~as.data.frame(bayestestR::ci(perc_change, ci = .x, method = "ETI"))$CI_high)  %>% unlist(),
+          CI_type = ci_alpha_list) %>%
   ungroup() %>%
   mutate(width = CI_high - CI_low)
 
 power_eval <- power_check_df %>% 
-  select(sim_id, rep, true_perc_change, est_perc_change) %>%
+  rowwise() %>%
+  mutate(total_n = sum(low_n, high_n, na.rm = TRUE)) %>%
+  ungroup() %>%
+  select(sim_id, rep, true_perc_change, est_perc_change, total_n) %>%
   mutate(bias = est_perc_change - true_perc_change) %>%
   left_join(ci_df) %>%
   rowwise() %>%
-  mutate(ci_check = between(true_perc_change, CI_low, CI_high) & !between(0,  CI_low, CI_high)) %>%
-  select(sim_id, rep, bias, width, ci_check) %>%
-  group_by(sim_id) %>%
+  mutate(ci_check = between(true_perc_change, CI_low, CI_high) & !between(0,  CI_low, CI_high),
+         ci_check_right_tail = true_perc_change < CI_high & CI_high < 0,
+         ci_check_any_decline = CI_high < 0,
+         ci_check_interval = between(true_perc_change, CI_low, CI_high)) %>%
+  select(sim_id, rep, bias, width, ci_check, ci_check_interval, ci_check_right_tail, ci_check_any_decline,
+         CI_type, total_n) %>%
+  group_by(sim_id, total_n, CI_type) %>%
   summarize(bias = mean(bias),
             width = mean(width),
-            ci_check = sum(ci_check)/simn)
+            ci_check = sum(ci_check)/simn,
+            ci_check_right_tail = sum(ci_check_right_tail)/simn,
+            ci_check_any_decline = sum(ci_check_any_decline)/simn,
+            ci_check_interval = sum(ci_check_interval)/simn) %>%
+  left_join(sim_scenarios_emu) %>%
+  group_by(psi, p, phi) %>%
+  mutate(line_id = cur_group_id()) %>%
+  separate(sim_id, c("emu", "sim_num"), sep = "_", remove = FALSE)
 
 # power_plot_df <- power_check_df %>%
 #   rowwise() %>%
