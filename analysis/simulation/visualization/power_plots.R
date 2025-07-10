@@ -64,7 +64,10 @@ hier_power_plt <- hier_plot_df %>%
 
 power_plot_df <- read.csv(here::here("data/power_plot_df.csv"))
 
-power_plt <- power_plot_df %>%
+ci_plotting_df <- tibble(ci = c(0.95, 0.90, 0.90),
+                         y = c("ci_check", "ci_check_right_tail", "ci_check_any_decline"))
+
+power_plt <- purrr::pmap(ci_plotting_df, ~power_eval %>%
   select(-sim_id) %>%
   left_join(sim_scenarios_table, by = c("phi", "p", "psi" = "psi_high")) %>%
   mutate(sim_type = paste0(simulation_scenario, ":  \u03A8 = ", psi, ", \u03C6 = ", phi, ", p = ", p)) %>%
@@ -75,7 +78,8 @@ power_plt <- power_plot_df %>%
     emu == "SRM" ~ "Southern Rocky Mountains",
     emu == "UGM" ~ "Upper Gila Mountains"
   )) %>%
-  ggplot(aes(x = total_n, y = success)) +
+  filter(CI_type == .x) %>%
+  ggplot(aes(x = total_n, y = !! rlang::sym(.y))) +
   geom_line(aes(color = sim_type, linetype = sim_type), linewidth = 0.75) +
   facet_wrap(~unit, scales = "free_x") +
   theme_classic() +
@@ -96,10 +100,11 @@ power_plt <- power_plot_df %>%
          ) +
   ylab("Percent Success") +
   xlab("Sample Size")
+)
 
 #ggsave(here::here("figures/power_plot.jpeg"), power_plt)
 
-power_join <- power_plt + plot_spacer() +
+power_join <- power_plt[[1]] + plot_spacer() +
   (plot_spacer() + hier_power_plt + plot_spacer() + plot_layout(ncol = 1, heights = c(0.5,2,0.5))) +
   plot_layout(nrow = 1, widths = c(2, 0.15, 1))
 

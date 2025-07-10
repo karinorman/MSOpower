@@ -346,10 +346,9 @@ model_check <- function(high_name, low_name, sample_size, repn, high_occ, low_oc
   #fit_model
   n.chains <- 3
   n.thin <- 1
-  n.burn <- 500
-  n.batch <- 30
-  batch.length <- 25
-  
+  n.burn <- 2000
+  n.batch <- 60
+  batch.length <- 50
   
   z.init <- apply(obs_occ_array, c(1, 2), function(a) as.numeric(sum(a, na.rm = TRUE) > 0))
   inits.list <- list(beta = 0,
@@ -375,7 +374,8 @@ model_check <- function(high_name, low_name, sample_size, repn, high_occ, low_oc
                        batch.length = batch.length)
   } else{
     
-    test_fit <- tPGOcc(occ.formula = ~ year + landtype,
+    test_fit <- tPGOcc(occ.formula = ~ year,
+                       #occ.formula = ~ year + landtype,
                        det.formula = ~ 1,
                        data = list(y = obs_occ_array, occ.covs = occ.covs),
                        inits = inits.list,
@@ -504,4 +504,4 @@ power_eval <- power_check_df %>%
 #   mutate(line_id = cur_group_id()) %>%
 #   separate(sim_id, c("emu", "sim_num"), sep = "_", remove = FALSE)
 # 
-# readr::write_csv(power_plot_df, here::here("data/power_plot_df.csv"))
+readr::write_csv(power_eval, here::here("data/power_eval.csv"))
