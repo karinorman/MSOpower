@@ -463,7 +463,9 @@ ci_df <- posterior_df %>%
                        ~as.data.frame(bayestestR::ci(perc_change, ci = .x, method = "ETI"))$CI_low) %>% unlist(),
           CI_high = map(ci_alpha_list, 
                         ~as.data.frame(bayestestR::ci(perc_change, ci = .x, method = "ETI"))$CI_high)  %>% unlist(),
-          CI_type = ci_alpha_list) %>%
+          CI_type = ci_alpha_list,
+          min_post = min(perc_change),
+          max_post = max(perc_change)) %>%
   ungroup() %>%
   mutate(width = CI_high - CI_low)
 
@@ -472,36 +474,32 @@ power_eval <- power_check_df %>%
   mutate(total_n = sum(low_n, high_n, na.rm = TRUE)) %>%
   ungroup() %>%
   select(sim_id, rep, true_perc_change, est_perc_change, total_n) %>%
-  mutate(bias = est_perc_change - true_perc_change) %>%
+  mutate(bias = true_perc_change < est_perc_change) %>%
   left_join(ci_df) %>%
   rowwise() %>%
   mutate(ci_check = between(true_perc_change, CI_low, CI_high) & !between(0,  CI_low, CI_high),
          ci_check_right_tail = true_perc_change < CI_high & CI_high < 0,
          ci_check_any_decline = CI_high < 0,
-         ci_check_interval = between(true_perc_change, CI_low, CI_high)) %>%
-  select(sim_id, rep, bias, width, ci_check, ci_check_interval, ci_check_right_tail, ci_check_any_decline,
-         CI_type, total_n) %>%
+         ci_check_interval_twotail = between(true_perc_change, CI_low, CI_high),
+         ci_check_interval_righttail = between(true_perc_change, min_post, CI_high),
+         # if the true trend isn't in the CI, what direction was the bias?
+         bias_out_ci = ifelse(ci_check_interval_righttail == FALSE, bias, NA)) %>%
+  select(sim_id, rep, bias, width, ci_check, ci_check_interval_twotail, ci_check_interval_righttail,
+         ci_check_right_tail, ci_check_any_decline,
+         bias_out_ci, CI_type, total_n) %>%
   group_by(sim_id, total_n, CI_type) %>%
-  summarize(bias = mean(bias),
+  summarize(#bias = mean(bias),
             width = mean(width),
             ci_check = sum(ci_check)/simn,
             ci_check_right_tail = sum(ci_check_right_tail)/simn,
             ci_check_any_decline = sum(ci_check_any_decline)/simn,
-            ci_check_interval = sum(ci_check_interval)/simn) %>%
+            ci_check_interval_twotail = sum(ci_check_interval_twotail)/simn,
+            ci_check_interval_righttail = sum(ci_check_interval_righttail)/simn,
+            percent_trend_lower = sum(bias) /simn,
+            percent_exclude_trend_lower = sum(bias_out_ci, na.rm = TRUE) / sum(!is.na(bias_out_ci))) %>%
   left_join(sim_scenarios_emu) %>%
   group_by(psi, p, phi) %>%
   mutate(line_id = cur_group_id()) %>%
   separate(sim_id, c("emu", "sim_num"), sep = "_", remove = FALSE)
 
-# power_plot_df <- power_check_df %>%
-#   rowwise() %>%
-#   mutate(total_n = sum(low_n, high_n, na.rm = TRUE)) %>%
-#   ungroup() %>%
-#   group_by(sim_id, total_n) %>%
-#   summarize(across(c(success), ~sum(.x)/simn)) %>%
-#   left_join(sim_scenarios_emu) %>%
-#   group_by(psi, p, phi) %>%
-#   mutate(line_id = cur_group_id()) %>%
-#   separate(sim_id, c("emu", "sim_num"), sep = "_", remove = FALSE)
-# 
 readr::write_csv(power_eval, here::here("data/power_eval.csv"))
