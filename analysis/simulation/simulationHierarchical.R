@@ -108,7 +108,7 @@ emu_ratio %>%
 # Let's not worry about how the samples are distributed, just get a toy set of simulations to play with
 
 source(here::here("R/sim_dataset.R"))
-simn <- 300
+simn <- 100
 
 set.seed(42)
 plan(multisession, workers = 60)
@@ -284,11 +284,12 @@ hierarch_model_check <- function(total_samp, scenario_id, repn, data){
     mutate(perc_change = (t10-t1)/t1) %>%
     pull(perc_change)
 
-  check_dist <- between(true_trend, min(post$perc_change),max(post$perc_change)) & !between(0, min(post$perc_change),max(post$perc_change))
+  #check_dist <- between(true_trend, min(post$perc_change),max(post$perc_change)) & !between(0, min(post$perc_change),max(post$perc_change))
 
   return(list("power_check" = data.frame("scenario_id" = scenario_id, "rep" = repn,
                                          "true_perc_change" = true_trend, "est_perc_change" = mean(post$perc_change),
-                                         "success" = check_dist, "samps_under" = sum(true_trend > post$perc_change),
+                                         #"success" = check_dist, 
+                                         "samps_under" = sum(true_trend > post$perc_change),
                                          "samps_over" = sum(true_trend < post$perc_change)),
               "posterior" = post
   ))
