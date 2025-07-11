@@ -315,3 +315,39 @@ power_eval %>%
   ) +
   ylab("Percent of Reps where True Trend not in CI and is less than estimated trend") +
   xlab("Sample Size")
+
+## Precision figure ##
+
+power_eval %>%
+  select(-sim_id) %>%
+  left_join(sim_scenarios_table, by = c("phi", "p", "psi" = "psi_high")) %>%
+  mutate(sim_type = paste0(simulation_scenario, ":  \u03A8 = ", psi, ", \u03C6 = ", phi, ", p = ", p)) %>%
+  mutate(unit = case_when(
+    emu == "BRE" ~ "Basin & Range - East",
+    emu == "BRW" ~ "Basin & Range - West",
+    emu == "CP" ~ "Colorado Plateau",
+    emu == "SRM" ~ "Southern Rocky Mountains",
+    emu == "UGM" ~ "Upper Gila Mountains"
+  )) %>%
+  filter(CI_type == 0.95) %>%
+  ggplot(aes(x = total_n, y = width)) +
+  geom_line(aes(color = sim_type, linetype = sim_type), linewidth = 0.75) +
+  facet_wrap(~unit, scales = "free_x") +
+  theme_classic() +
+  scale_colour_discrete("", type = rep(c("#8A6240", "#87A96B", "#28587B", "#c9673a"), each = 2)) +
+  scale_linetype_manual("", values=c(2,1,2,1,2,1,2,1)) +
+  geom_hline(yintercept = 0.5, color = "darkgrey", linetype = "dashed", linewidth = 1) +
+  theme(legend.position = "inside", legend.position.inside = c(0.85, 0.25),
+        legend.text=element_text(size=12),
+        legend.key.width = unit(1,"cm"),
+        text=element_text(size=14),
+        legend.key.spacing.y = unit(0.5, 'cm'),
+        panel.spacing = unit(30, "pt"),
+        axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
+        axis.title.x = element_text(margin = margin(t = 20, r = 0, b = 0, l = 0))
+  ) +
+  guides(linetype = guide_legend(override.aes = list(linewidth = 1))# byrow = TRUE),
+         #color = guide_legend(byrow = TRUE)
+  ) +
+  ylab("Average CI Width") +
+  xlab("Sample Size")
