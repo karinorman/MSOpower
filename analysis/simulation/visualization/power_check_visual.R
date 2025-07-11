@@ -29,7 +29,7 @@ ci_plt <- ggplot(data.frame(x = x, y = y), aes(x, y)) +
         axis.ticks.y=element_blank(),
         #axis.line = element_line(colour = 'black', size = 2)
         ) +
-  annotate("text", label = "\u03B1 = 0.025", x = ci95$CI_high + 0.035, y = 4, color = "#87A96B") +
+  annotate("text", label = "\u03B1 = 0.025", x = ci95$CI_high + 0.04, y = 4, color = "#87A96B") +
   annotate("text", label = "\u03B1 = 0.05", x = -0.1, y = 4.5, color = "#d0b740")
 
 ggsave(here::here("figures/power_check_conceptual.jpg"), ci_plt, width = 6, height = 4)
