@@ -62,7 +62,7 @@ hier_power_plt <- hier_plot_df %>%
 
 ### EMU Power ###
 
-power_plot_df <- read.csv(here::here("data/power_plot_df.csv"))
+power_eval <- read.csv(here::here("data/power_eval.csv"))
 
 ci_plotting_df <- tibble(ci = c(0.95, 0.90, 0.90),
                          y = c("ci_check", "ci_check_right_tail", "ci_check_any_decline"))
@@ -279,7 +279,7 @@ power_eval %>%
 
 
 
-## For a right-tailed, alpha = 0.05 test, what percentage of reps is the true trend less than the estimated trend for only reps where 
+## For a right-tailed, alpha = 0.05 test, what percentage of reps is the true trend less than the estimated trend for only reps where
 ## estimated trend is not included in CI
 ### This plot shows that for reps not in the confidence interval, we're way more likely to overestimate the trend (true trend is greater than estimated trend)
 power_eval %>%
