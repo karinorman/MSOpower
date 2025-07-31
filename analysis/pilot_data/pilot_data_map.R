@@ -95,7 +95,12 @@ bb_list <- pmap(data.frame(label = c("kaibab", "cibola a", "cibola b", "gila"),
                  ) %>% set_names(c("kaibab", "cibola a", "cibola b", "gila"))
 
 # map of the entire study area (New Mexico and Arizona)
-study_map <- ggplot() +
+
+# df for ranger district labels
+rd_labels <- data.frame(x = c(-110.4, -106, -107.5, -104.5), y = c(35, 33.4, 36.2, 34.7),
+                        name = c("Williams RD", "Black \nRange RD", "Sandia RD", "Mountainair RD"))
+study_map <-
+  ggplot() +
   geom_spatvector(data = boundary_states, color = "black", fill = "transparent") +
   geom_spatvector(data = ranger_bounds, color = "black", fill = "transparent") +
   geom_spatvector(data = forest_boundaries, aes(fill = FORESTNAME), color = "transparent", alpha = 0.60) + #, color = "grey") +
@@ -120,7 +125,8 @@ study_map <- ggplot() +
             linewidth = 0.4) +
   geom_rect(aes(xmin = bb_list$`cibola b`$xmin, xmax = bb_list$`cibola b`$xmax, ymin = bb_list$`cibola b`$ymin, ymax = bb_list$`cibola b`$ymax),
             fill = "transparent", color = "black",
-            linewidth = 0.4)
+            linewidth = 0.4) #+
+  #geom_label(data = rd_labels, aes(x = x, y = y, label = name), size = 2)
 
 
 ### Generate inset maps ###
@@ -184,6 +190,7 @@ study_map_insets <- ggdraw(study_map) +
     width = 0.35,
     height = 0.35
   ) +
+  draw_text("Williams Ranger District", x = 0.28, y = .975, size = 8) +
   draw_plot(
     {forest_insets$`cibola a`},
     x = 0.54,
@@ -191,6 +198,7 @@ study_map_insets <- ggdraw(study_map) +
     width = 0.35,
     height = 0.35
   ) +
+  draw_text("Sandia Ranger District", x = 0.725, y = .975, size = 8) +
   draw_plot(
     {forest_insets$`cibola b`},
     x = 0.62,
@@ -198,13 +206,15 @@ study_map_insets <- ggdraw(study_map) +
     width = 0.35,
     height = 0.85
   ) +
+  draw_text("Mountainair Ranger District", x = 0.8, y = .605, size = 8) +
   draw_plot(
     {forest_insets$gila},
     x = 0.23,
     y = 0.01,
     width = 0.35,
     height = 0.35
-  )
+  ) +
+draw_text("Black Range Ranger District", x = 0.415, y = .345, size = 8)
 
 ggsave(here::here("figures/pilot_locations.jpeg"), study_map_insets, width = 180, height = 200, units = "mm")
 
