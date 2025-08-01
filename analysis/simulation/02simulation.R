@@ -265,7 +265,7 @@ true_occ <- map_dfr(sim_scenarios_emu$sim_id, function(emu){
 ###########################################
 
 # map high occupancy sims to their low occupancy counterpart
-sim_map <- sim_scenarios_emu %>%
+sim_map_names <- sim_scenarios_emu %>%
   select(sim_id, psi, phi, p, n_samp) %>%
   filter(psi != 0.03) %>%
   separate(sim_id, c("emu"), sep = "_", remove = FALSE) %>%
@@ -277,7 +277,9 @@ sim_map <- sim_scenarios_emu %>%
               separate(sim_id, c("emu"), sep = "_", remove = FALSE) %>%
               select(-psi) %>%
               rename(low_name = sim_id)) %>%
-  select(high_name, low_name, sample_size = n_samp) %>%
+  select(high_name, low_name, sample_size = n_samp) 
+
+sim_map <- sim_map_names %>%
   group_by(high_name, sample_size) %>%
   nest() %>%
   mutate(rep = map(data, ~1:simn)) %>%
@@ -296,6 +298,19 @@ sim_map_occ <- sim_map %>%
     )
   })) %>%
   unnest(cols = "data")
+
+true_occ_paired <- pmap(sim_map_names %>% select(-sample_size), function(high_name, low_name){
+  map_dfr(1:simn, ~pluck(sim_list_emu, high_name, .x, "true_occ") %>%
+            bind_rows(pluck(sim_list_emu, low_name, .x, "true_occ")) %>%
+            select(-site_id) %>%
+            ungroup() %>%
+            summarize(across(everything(), mean)) %>%
+            mutate(rep = .x)) %>%
+    mutate(high_name = high_name, low_name = low_name)
+}) %>% 
+  bind_rows() %>%
+  mutate(perc_change = (t10-t1)/t1)
+
 
 model_check <- function(high_name, low_name, sample_size, repn, high_occ, low_occ) {
   
@@ -421,11 +436,11 @@ model_check <- function(high_name, low_name, sample_size, repn, high_occ, low_oc
   #          perc_change = (t10-t1)/t1) %>%
   #   mutate(sim_id = high_name, rep = repn)
   
-  true_trend <- true_occ %>%
-    filter(sim_id == high_name, rep == repn) %>%
-    mutate(perc_change = (t10-t1)/t1) %>%
+  # true trend is the mean of simulated trend for high and low occurrence areas
+  true_trend <- true_occ_paired %>%
+    filter(high_name == !!high_name, low_name == !!low_name, rep == !!repn) %>%
     pull(perc_change)
-  
+
   #check_dist <- between(true_trend, min(post$perc_change),max(post$perc_change)) & !between(0, min(post$perc_change),max(post$perc_change))
   
   return(list("power_check" = data.frame("sim_id" = high_name, "rep" = repn, "low_n" = low_n, "high_n" = high_n,
@@ -470,6 +485,9 @@ ci_df <- posterior_df %>%
   mutate(width = CI_high - CI_low)
 
 power_eval <- power_check_df %>% 
+  # if the paired percent change was computed by hand, replace the old approach with following two lines
+  select(-true_perc_change) %>%
+  left_join(true_occ_paired %>% select(sim_id = high_name, true_perc_change = perc_change, rep)) %>%
   rowwise() %>%
   mutate(total_n = sum(low_n, high_n, na.rm = TRUE)) %>%
   ungroup() %>%
