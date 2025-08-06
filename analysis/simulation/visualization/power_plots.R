@@ -64,10 +64,11 @@ hier_power_plt <- hier_plot_df %>%
 
 power_eval <- read.csv(here::here("data/power_eval.csv"))
 
-ci_plotting_df <- tibble(ci = c(0.95, 0.90, 0.90),
-                         y = c("ci_check", "ci_check_right_tail", "ci_check_any_decline"))
+ci_plotting_df <- tibble(ci = c(0.95, 0.90, 0.95, 0.90),
+                         y = c("ci_check", "ci_check_left_tail", "ci_check_any_decline", "post_check_any_decline"))
 
 power_plt <- purrr::pmap(ci_plotting_df, ~power_eval %>%
+                           filter(total_n < 1200) %>%
   select(-sim_id) %>%
   left_join(sim_scenarios_table, by = c("phi", "p", "psi" = "psi_high")) %>%
   mutate(sim_type = paste0(simulation_scenario, ":  \u03A8 = ", psi, ", \u03C6 = ", phi, ", p = ", p)) %>%
@@ -110,6 +111,10 @@ power_join <- power_plt[[1]] + plot_spacer() +
 
 ggsave(here::here("figures/power_plot_join.jpeg"), power_join, width = 23, height = 11.5)
 
+# get plots for different kinds of power checks
+ggsave(here::here("figures/power_check_twotail.png"), power_plt[[1]], width = 16.5, height = 9.87)
+ggsave(here::here("figures/power_check_lefttail.png"), power_plt[[2]], width = 16.5, height = 9.87)
+ggsave(here::here("figures/power_check_negative.png"), power_plt[[3]], width = 16.5, height = 9.87)
 
 ################################
 #### Separate by detection #####
@@ -241,7 +246,7 @@ ggsave(here::here("figures/power_plot_detection.jpeg"), power_by_detection, widt
 
 ##### Bias #####
 
-## For a right-tailed, alpha = 0.05 test, what percentage of reps is the true trend less than the estimated trend
+## For a two-tailed, alpha = 0.05 test, what percentage of reps is the true trend less than the estimated trend
 ### This plot shows that we're slightly more likely to underestimate the trend (true trend is less than estimated trend) across all replicates
 power_eval %>%
   select(-sim_id) %>%
@@ -279,7 +284,7 @@ power_eval %>%
 
 
 
-## For a right-tailed, alpha = 0.05 test, what percentage of reps is the true trend less than the estimated trend for only reps where
+## For a two-tailed, alpha = 0.05 test, what percentage of reps is the true trend less than the estimated trend for only reps where
 ## estimated trend is not included in CI
 ### This plot shows that for reps not in the confidence interval, we're way more likely to overestimate the trend (true trend is greater than estimated trend)
 power_eval %>%
