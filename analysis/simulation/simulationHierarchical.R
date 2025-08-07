@@ -110,13 +110,14 @@ emu_ratio %>%
 source(here::here("R/sim_dataset.R"))
 simn <- 100
 
-set.seed(42)
 plan(multisession, workers = 60)
 hier_sim_list <- map(1:simn, ~furrr::future_pmap(sim_scenarios_emu %>%
-                                              select(-sim_id, -total_samp), sim_dataset, nyear = nyear, n_vis = 2) %>%
-                  set_names(sim_scenarios_emu$sim_id),
-                .options=furrr_options(seed = TRUE)) %>%
+                                                   select(-sim_id, -total_samp), sim_dataset, nyear = nyear, n_vis = 2) %>%
+                       set_names(sim_scenarios_emu$sim_id),
+                     .options=furrr_options(seed = TRUE)) %>%
   set_names(paste0("rep", 1:simn))
+
+usethis::use_data(hier_sim_list)
 
 # reorder so top level of nested list is a sim scenario
 sim_list_emu <- map(sim_scenarios_emu$sim_id, function(emu) {
@@ -144,7 +145,7 @@ sim_map <- sim_scenarios_emu %>%
 # get list of sim id's for each scenario
 sim_reps_df <- map(unique(sim_map$scenario_id), function(id) {
   df <- sim_map %>% filter(scenario_id == id)
-
+  
   return(c(df$high_name, df$low_name))
 }) %>%
   set_names(unique(sim_map$scenario_id)) %>%
@@ -153,24 +154,25 @@ sim_reps_df <- map(unique(sim_map$scenario_id), function(id) {
   rename(emu_sim_name = value, scenario_id = name)
 
 # need the true occ for each sim scenario and rep
-true_occ_high <- map_dfr(unique(sim_reps_df$scenario_id), function(scenario){
+true_occ <- map_dfr(unique(sim_reps_df$scenario_id), function(scenario){
   emu_sims <- sim_reps_df %>%
     filter(scenario_id == scenario) %>%
     pull(emu_sim_name)
-
- #browser()
-
+  
+  #browser()
+  
   map_dfr(1:simn, function(simn, scenario_id) {
-  #$browser()
+    #browser()
     map_dfr(emu_sims, ~pluck(sim_list_emu, .x, simn, "true_occ") %>%
-        mutate(emu_sim_name = .x, rep = simn )) %>%
-    mutate(scenario_id = scenario_id)
+              mutate(emu_sim_name = .x, rep = simn )) %>%
+      mutate(scenario_id = scenario_id)
   }, scenario_id = scenario)
 }) %>%
-  filter(emu_sim_name %in% sim_map$high_name) %>%
+  #filter(emu_sim_name %in% sim_map$high_name) %>%
   select(-emu_sim_name, -site_id) %>%
   group_by(rep, scenario_id) %>%
-  summarize(across(everything(), mean))
+  summarize(across(everything(), mean) )%>%
+  mutate(perc_change = (t10-t1)/t1)
 
 
 
@@ -183,9 +185,9 @@ obs_occ <- map_dfr(unique(sim_reps_df$scenario_id), function(scenario){
   emu_sims <- sim_reps_df %>%
     filter(scenario_id == scenario) %>%
     pull(emu_sim_name)
-
+  
   #browser()
-
+  
   map_dfr(1:simn, function(simn, scenario_id) {
     #$browser()
     map_dfr(emu_sims, ~pluck(sim_list_emu, .x, simn, "obs_occ") %>%
@@ -202,31 +204,37 @@ obs_occ <- map_dfr(unique(sim_reps_df$scenario_id), function(scenario){
 map_model_df <- obs_occ %>%
   group_by(scenario_id, rep, total_samp) %>%
   nest() %>%
-  select(total_samp, scenario_id, repn = rep, data)
+  select(total_samp, scenario_id, repn = rep, model_data = data) %>%
+  left_join(true_occ %>% 
+              select(scenario_id, repn = rep, true_trend = perc_change))
+
+# gotta deal with the giant memory issues
+rm(hier_sim_list, sim_list_emu, obs_occ)
+gc()
 
 
-hierarch_model_check <- function(total_samp, scenario_id, repn, data){
+hierarch_model_check <- function(total_samp, scenario_id, repn, model_data, true_trend){
   # get example sample where half the sites are sampled
   #total_samp <- 19552
-
-  model_data <- data %>%
+  
+  model_data <- model_data %>%
     group_by(site_id, emu_sim_name) %>%
     mutate(site_id = cur_group_id()) %>%
     ungroup()
-
+  
   samp_sites <- c(sample(model_data %>% filter(landtype == "high") %>% pull(site_id) %>% unique(), round(total_samp*0.75), replace = FALSE),
                   sample(model_data %>% filter(landtype == "low") %>% pull(site_id) %>% unique(), round(total_samp*0.25), replace = FALSE)
   )
-
+  
   model_data_samp <- model_data %>% filter(site_id %in% samp_sites)
-
+  
   obs_occ_array <- model_data_samp %>%
     arrange(site_id) %>%
     select(-c(site_id, emu_sim_name, landtype)) %>%
     split(model_data_samp$visit) %>%
     map(., ~ .x %>% select(-visit) %>% as.matrix()) %>%
     simplify2array()
-
+  
   covars <-  model_data_samp %>%
     arrange(site_id) %>%
     filter(visit == 1) %>%
@@ -235,28 +243,28 @@ hierarch_model_check <- function(total_samp, scenario_id, repn, data){
     select(emu, landtype) %>%
     group_by(emu) %>%
     mutate(emu_num = cur_group_id())
-
+  
   year_cov <- matrix(1:nyear, nrow = 1)
   year_cov <- year_cov %x% rep(1, dim(obs_occ_array)[1])
-
+  
   covar_list <- list(emu = covars$emu_num, landtype = covars$landtype, year = year_cov)
-
+  
   #fit_model
   n.chains <- 3
   n.thin <- 1
   n.burn <- 2000
   n.batch <- 60
   batch.length <- 50
-
+  
   z.init <- apply(obs_occ_array, c(1, 2), function(a) as.numeric(sum(a, na.rm = TRUE) > 0))
   inits.list <- list(beta = 0,
                      alpha = 0,
                      z = z.init)
-
+  
   prior.list <- list(beta.normal = list(mean = 0, var = 2.72),
                      alpha.normal = list(mean = 0, var = 2.72))
-
-
+  
+  
   test_fit <- tPGOcc(occ.formula = ~ year + (1 | emu),
                      det.formula = ~ 1,
                      data = list(y = obs_occ_array, occ.covs = covar_list),
@@ -270,7 +278,7 @@ hierarch_model_check <- function(total_samp, scenario_id, repn, data){
                      n.chains = n.chains,
                      n.batch = n.batch,
                      batch.length = batch.length)
-
+  
   post <- as.data.frame(test_fit$beta.samples) %>%
     rename(intercept = `(Intercept)`) %>%
     #mutate(across(everything(), plogis)) %>%
@@ -278,14 +286,13 @@ hierarch_model_check <- function(total_samp, scenario_id, repn, data){
            t1 = plogis(year + intercept),
            perc_change = (t10-t1)/t1) %>%
     mutate(scenario_id = scenario_id, rep = repn)
-
-  true_trend <- true_occ_high %>%
-    filter(scenario_id == 1, rep == 1) %>%
-    mutate(perc_change = (t10-t1)/t1) %>%
-    pull(perc_change)
-
+  # 
+  #   true_trend <- true_occ %>%
+  #     filter(scenario_id == !!scenario_id, rep == !!repn) %>%
+  #     pull(perc_change)
+  
   #check_dist <- between(true_trend, min(post$perc_change),max(post$perc_change)) & !between(0, min(post$perc_change),max(post$perc_change))
-
+  
   return(list("power_check" = data.frame("scenario_id" = scenario_id, "rep" = repn,
                                          "true_perc_change" = true_trend, "est_perc_change" = mean(post$perc_change),
                                          #"success" = check_dist, 
@@ -295,9 +302,7 @@ hierarch_model_check <- function(total_samp, scenario_id, repn, data){
   ))
 }
 
-
 # perform the power check
-set.seed(42)
 plan(multisession, workers = 70)
 hierarch_check_list <- furrr::future_pmap(map_model_df, hierarch_model_check, .options=furrr_options(seed = TRUE))
 
