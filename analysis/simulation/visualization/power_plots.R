@@ -287,7 +287,7 @@ power_eval %>%
 ## For a two-tailed, alpha = 0.05 test, what percentage of reps is the true trend less than the estimated trend for only reps where
 ## estimated trend is not included in CI
 ### This plot shows that for reps not in the confidence interval, we're way more likely to overestimate the trend (true trend is greater than estimated trend)
-power_eval %>%
+bias_ci_in_plt <- power_eval %>%
   select(-sim_id) %>%
   left_join(sim_scenarios_table, by = c("phi", "p", "psi" = "psi_high")) %>%
   mutate(sim_type = paste0(simulation_scenario, ":  \u03A8 = ", psi, ", \u03C6 = ", phi, ", p = ", p)) %>%
@@ -321,9 +321,11 @@ power_eval %>%
   ylab("Percent of Reps where True Trend not in CI and is less than estimated trend") +
   xlab("Sample Size")
 
+ggsave(here::here("figures/bias_plot.png"), bias_ci_in_plt, width = 19.6, height = 12)
+
 ## Precision figure ##
 
-power_eval %>%
+precision_plt <- power_eval %>%
   select(-sim_id) %>%
   left_join(sim_scenarios_table, by = c("phi", "p", "psi" = "psi_high")) %>%
   mutate(sim_type = paste0(simulation_scenario, ":  \u03A8 = ", psi, ", \u03C6 = ", phi, ", p = ", p)) %>%
@@ -356,3 +358,5 @@ power_eval %>%
   ) +
   ylab("Average CI Width") +
   xlab("Sample Size")
+
+ggsave(here::here("figures/precision_plot.png"), precision_plt, width = 16.2, height = 12)
