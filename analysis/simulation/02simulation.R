@@ -95,7 +95,7 @@ sample_size_df <- emu_ratio %>%
   rowwise() %>%
   mutate(log_samp = list(c(seq(2.3, log_max_samp, by = 0.5), log_max_samp))) %>%
   unnest(log_samp) %>%
-  mutate(samp_size = round(exp(log_samp))) 
+  mutate(samp_size = round(exp(log_samp)))
 
 emu_sample_sizes <- emu_ratio %>%
   filter(occupancy == "high") %>%
@@ -139,14 +139,14 @@ sim_list_emu <- map(sim_scenarios_emu$sim_id, function(emu) {
   set_names(sim_scenarios_emu$sim_id)
 
 #get true occurrence for each rep and sim
-true_occ <- map_dfr(sim_scenarios_emu$sim_id, function(emu){
-  map_dfr(1:simn, ~pluck(sim_list_emu, emu, .x, "true_occ") %>%
-            select(-site_id) %>%
-            ungroup() %>%
-            summarize(across(everything(), mean)) %>%
-            mutate(rep = .x)) %>%
-    mutate(sim_id = emu)
-})
+# true_occ <- map_dfr(sim_scenarios_emu$sim_id, function(emu){
+#   map_dfr(1:simn, ~pluck(sim_list_emu, emu, .x, "true_occ") %>%
+#             select(-site_id) %>%
+#             ungroup() %>%
+#             summarize(across(everything(), mean)) %>%
+#             mutate(rep = .x)) %>%
+#     mutate(sim_id = emu)
+# })
 
 # true_occ_stats <- true_occ %>%
 #   pivot_longer(starts_with("t"), names_to = "time", values_to = "occ") %>%
@@ -159,7 +159,7 @@ true_occ <- map_dfr(sim_scenarios_emu$sim_id, function(emu){
 #   separate(sim_id, c("emu", "sim_num"), sep = "_", remove = FALSE) %>%
 #   mutate(time = as.numeric(stringr::str_remove(time, "t"))) %>%
 #   left_join(sim_scenarios_emu)
-# 
+#
 # # let's look at the annual reduction in survival for different scenarios
 # phi_red <- map_dfr(sim_scenarios_emu$sim_id, function(emu){
 #   map_dfr(1:simn, ~pluck(sim_list_emu, emu, .x, "phi_reduction") %>%
@@ -170,7 +170,7 @@ true_occ <- map_dfr(sim_scenarios_emu$sim_id, function(emu){
 #   group_by(sim_id, year) %>%
 #   summarize(phi_reduction = mean(phi_reduction)) %>%
 #   mutate(phi_multiplier = phi_reduction, phi_reduction = 1- phi_multiplier)
-# 
+#
 
 #This returns giant dataframe, hasn't been processed into encounter histories yet
 # obs_occ <- map_dfr(sim_scenarios_emu$sim_id, function(emu){
@@ -183,12 +183,12 @@ true_occ <- map_dfr(sim_scenarios_emu$sim_id, function(emu){
 ###########################################
 # library(lme4)
 # library(broom.mixed)
-# 
+#
 # true_occ_model_df <- true_occ %>%
 #   pivot_longer(starts_with("t"), names_to = "time", values_to = "occ") %>%
 #   mutate(time = as.numeric(stringr::str_remove(time, "t")))
-# 
-# 
+#
+#
 # model_fit_df <- true_occ_model_df %>%
 #   group_by(sim_id) %>%
 #   nest() %>%
@@ -213,12 +213,12 @@ true_occ <- map_dfr(sim_scenarios_emu$sim_id, function(emu){
 ########### Visualize True Occ ############
 ###########################################
 # library(ggplot2)
-# 
+#
 # true_occ_plot_df <- true_occ_stats %>%
 #   group_by(phi, psi, p) %>%
 #   mutate(line_id = cur_group_id()) %>%
 #   left_join(emu_sample_sizes %>% select(emu, n_samp))
-# 
+#
 # true_occ_plot_df %>%
 #   group_by(emu, n_samp) %>%
 #   slice(1) %>%
@@ -236,7 +236,7 @@ true_occ <- map_dfr(sim_scenarios_emu$sim_id, function(emu){
 #   geom_hline(yintercept = 0.15, linetype = "dotted") +
 #   geom_hline(yintercept = 0.43, linetype = "dotted") +
 #   geom_hline(yintercept = 0.3225, linetype = "dotted")
-# 
+#
 # true_occ_plot_df %>%
 #   group_by(emu, n_samp) %>%
 #   slice(1) %>%
@@ -250,7 +250,7 @@ true_occ <- map_dfr(sim_scenarios_emu$sim_id, function(emu){
 #   scale_fill_discrete(name = "Sim Scenario") +
 #   geom_hline(yintercept = 0.03, linetype = "dotted") +
 #   geom_hline(yintercept = 0.0225, linetype = "dotted")
-# 
+#
 # # visualize annual reduction in survival to get the desired trend
 # phi_red %>%
 #   left_join(sim_scenarios_emu) %>%
@@ -277,7 +277,7 @@ sim_map_names <- sim_scenarios_emu %>%
               separate(sim_id, c("emu"), sep = "_", remove = FALSE) %>%
               select(-psi) %>%
               rename(low_name = sim_id)) %>%
-  select(high_name, low_name, sample_size = n_samp) 
+  select(high_name, low_name, sample_size = n_samp)
 
 sim_map <- sim_map_names %>%
   group_by(high_name, sample_size) %>%
@@ -307,72 +307,72 @@ true_occ_paired <- pmap(sim_map_names %>% select(-sample_size), function(high_na
             summarize(across(everything(), mean)) %>%
             mutate(rep = .x)) %>%
     mutate(high_name = high_name, low_name = low_name)
-}) %>% 
+}) %>%
   bind_rows() %>%
   mutate(perc_change = (t10-t1)/t1)
 
 
 model_check <- function(high_name, low_name, sample_size, repn, high_occ, low_occ) {
-  
+
   print(c(high_name, repn))
-  
+
   # define sample size for high_n, grab data
   high_obs <- high_occ
   high_n = sample_size
-  
+
   if (!is.na(low_name)){
-    
+
     low_n = round(high_n*(1/3))
     low_obs <- low_occ
-    
+
     if(low_n > n_distinct(low_obs$site_id)){
       low_n = n_distinct(low_obs$site_id)
     }
-    
+
     obs_occ_df <- bind_rows(low_obs %>% filter(site_id %in% sample(unique(low_obs$site_id), low_n, replace = FALSE)),
                             high_obs %>% filter(site_id %in% sample(unique(high_obs$site_id), high_n, replace = FALSE))) %>%
       arrange(visit)
   } else {
-    
+
     low_n = NA
-    
+
     obs_occ_df <- high_obs %>%
       filter(site_id %in% sample(unique(high_obs$site_id), high_n, replace = FALSE)) %>%
       arrange(visit)
   }
-  
-  
-  
+
+
+
   obs_occ_array <- obs_occ_df %>%
     select(-site_id, landtype) %>%
     split(obs_occ_df$visit) %>%
     map(., ~ .x %>% select(-visit, -landtype) %>% as.matrix()) %>%
     simplify2array()
-  
+
   landtype_cov <- obs_occ_df %>%
     filter(visit == 1) %>%
     select(landtype)
-  
+
   year_cov <- matrix(1:nyear, nrow = 1)
   year_cov <- year_cov %x% rep(1, dim(obs_occ_array)[1])
-  
+
   occ.covs <- list(landtype = landtype_cov, year = year_cov)
-  
+
   #fit_model
   n.chains <- 3
   n.thin <- 1
   n.burn <- 2000
   n.batch <- 60
   batch.length <- 50
-  
+
   z.init <- apply(obs_occ_array, c(1, 2), function(a) as.numeric(sum(a, na.rm = TRUE) > 0))
   inits.list <- list(beta = 0,
                      alpha = 0,
                      z = z.init)
-  
+
   prior.list <- list(beta.normal = list(mean = 0, var = 2.72),
                      alpha.normal = list(mean = 0, var = 2.72))
-  
+
   if (is.na(low_n)){
     test_fit <- tPGOcc(occ.formula = ~ year,
                        det.formula = ~ 1,
@@ -388,7 +388,7 @@ model_check <- function(high_name, low_name, sample_size, repn, high_occ, low_oc
                        n.batch = n.batch,
                        batch.length = batch.length)
   } else{
-    
+
     test_fit <- tPGOcc(occ.formula = ~ year,
                        #occ.formula = ~ year + landtype,
                        det.formula = ~ 1,
@@ -403,7 +403,7 @@ model_check <- function(high_name, low_name, sample_size, repn, high_occ, low_oc
                        n.chains = n.chains,
                        n.batch = n.batch,
                        batch.length = batch.length)
-    
+
   }
   # null_fit <- tPGOcc(occ.formula = ~ year,
   #                    det.formula = ~ 1,
@@ -418,7 +418,7 @@ model_check <- function(high_name, low_name, sample_size, repn, high_occ, low_oc
   #                    n.chains = n.chains,
   #                    n.batch = n.batch,
   #                    batch.length = batch.length)
-  
+
   # get the posterior for the estimates
   post <- as.data.frame(test_fit$beta.samples) %>%
     rename(intercept = `(Intercept)`) %>%
@@ -427,7 +427,7 @@ model_check <- function(high_name, low_name, sample_size, repn, high_occ, low_oc
            t1 = plogis(year + intercept),
            perc_change = (t10-t1)/t1) %>%
     mutate(sim_id = high_name, rep = repn)
-  
+
   # post_null <- as.data.frame(null_fit$beta.samples) %>%
   #   rename(intercept = `(Intercept)`) %>%
   #   #mutate(across(everything(), plogis)) %>%
@@ -435,14 +435,14 @@ model_check <- function(high_name, low_name, sample_size, repn, high_occ, low_oc
   #          t1 = plogis(year + intercept),
   #          perc_change = (t10-t1)/t1) %>%
   #   mutate(sim_id = high_name, rep = repn)
-  
+
   # true trend is the mean of simulated trend for high and low occurrence areas
   true_trend <- true_occ_paired %>%
     filter(high_name == !!high_name, low_name == !!low_name, rep == !!repn) %>%
     pull(perc_change)
 
   #check_dist <- between(true_trend, min(post$perc_change),max(post$perc_change)) & !between(0, min(post$perc_change),max(post$perc_change))
-  
+
   return(list("power_check" = data.frame("sim_id" = high_name, "rep" = repn, "low_n" = low_n, "high_n" = high_n,
                                          "true_perc_change" = true_trend, "est_perc_change" = mean(post$perc_change),
                                          #"success" = check_dist,
@@ -474,9 +474,9 @@ ci_alpha_list <- c(0.5, 0.90, 0.95)
 ci_df <- posterior_df %>%
   select(sim_id, rep, perc_change) %>%
   group_by(sim_id, rep) %>%
-  reframe(CI_low = map(ci_alpha_list, 
+  reframe(CI_low = map(ci_alpha_list,
                        ~as.data.frame(bayestestR::ci(perc_change, ci = .x, method = "ETI"))$CI_low) %>% unlist(),
-          CI_high = map(ci_alpha_list, 
+          CI_high = map(ci_alpha_list,
                         ~as.data.frame(bayestestR::ci(perc_change, ci = .x, method = "ETI"))$CI_high)  %>% unlist(),
           CI_type = ci_alpha_list,
           min_post = min(perc_change),
@@ -484,7 +484,7 @@ ci_df <- posterior_df %>%
   ungroup() %>%
   mutate(width = CI_high - CI_low)
 
-power_eval <- power_check_df %>% 
+power_eval <- power_check_df %>%
   # if the paired percent change was computed by hand, replace the old approach with following two lines
   select(-true_perc_change) %>%
   left_join(true_occ_paired %>% select(sim_id = high_name, true_perc_change = perc_change, rep)) %>%
@@ -496,21 +496,23 @@ power_eval <- power_check_df %>%
   left_join(ci_df) %>%
   rowwise() %>%
   mutate(ci_check = between(true_perc_change, CI_low, CI_high) & !between(0,  CI_low, CI_high),
-         ci_check_right_tail = true_perc_change < CI_high & CI_high < 0,
+         ci_check_left_tail = true_perc_change > CI_low & true_perc_change < max_post & max_post < 0,
          ci_check_any_decline = CI_high < 0,
+         post_check_any_decline = max_post < 0,
          ci_check_interval_twotail = between(true_perc_change, CI_low, CI_high),
          ci_check_interval_righttail = between(true_perc_change, min_post, CI_high),
          # if the true trend isn't in the CI, what direction was the bias?
-         bias_out_ci = ifelse(ci_check_interval_righttail == FALSE, bias, NA)) %>%
+         bias_out_ci = ifelse(ci_check_interval_twotail == FALSE, bias, NA)) %>%
   select(sim_id, rep, bias, width, ci_check, ci_check_interval_twotail, ci_check_interval_righttail,
-         ci_check_right_tail, ci_check_any_decline,
+         ci_check_left_tail, ci_check_any_decline, post_check_any_decline,
          bias_out_ci, CI_type, total_n) %>%
   group_by(sim_id, total_n, CI_type) %>%
   summarize(#bias = mean(bias),
             width = mean(width),
             ci_check = sum(ci_check)/simn,
-            ci_check_right_tail = sum(ci_check_right_tail)/simn,
+            ci_check_left_tail = sum(ci_check_left_tail)/simn,
             ci_check_any_decline = sum(ci_check_any_decline)/simn,
+            post_check_any_decline = sum(post_check_any_decline)/simn,
             ci_check_interval_twotail = sum(ci_check_interval_twotail)/simn,
             ci_check_interval_righttail = sum(ci_check_interval_righttail)/simn,
             percent_trend_lower = sum(bias) /simn,
@@ -521,3 +523,18 @@ power_eval <- power_check_df %>%
   separate(sim_id, c("emu", "sim_num"), sep = "_", remove = FALSE)
 
 readr::write_csv(power_eval, here::here("data/power_eval.csv"))
+
+# how many was trend not in two-tailed, was in left-tailed, but the left-tailed contained zero
+power_check_df %>%
+  # if the paired percent change was computed by hand, replace the old approach with following two lines
+  select(-true_perc_change) %>%
+  left_join(true_occ_paired %>% select(sim_id = high_name, true_perc_change = perc_change, rep)) %>%
+  rowwise() %>%
+  mutate(total_n = sum(low_n, high_n, na.rm = TRUE)) %>%
+  ungroup() %>%
+  select(sim_id, rep, true_perc_change, est_perc_change, total_n) %>%
+  mutate(bias = true_perc_change < est_perc_change) %>%
+  left_join(ci_df) %>%
+  filter(CI_type == 0.95) %>%
+  mutate(bad_case = ifelse(true_perc_change > CI_high & true_perc_change < max_post & max_post > 0, TRUE, FALSE)) %>%
+  View()
