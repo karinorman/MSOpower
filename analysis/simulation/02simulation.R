@@ -492,7 +492,9 @@ power_eval <- power_check_df %>%
   mutate(total_n = sum(low_n, high_n, na.rm = TRUE)) %>%
   ungroup() %>%
   select(sim_id, rep, true_perc_change, est_perc_change, total_n) %>%
-  mutate(bias = true_perc_change < est_perc_change) %>%
+  mutate(bias_comp = true_perc_change < est_perc_change,
+         bias = est_perc_change - true_perc_change,
+         relative_bias = (est_perc_change - true_perc_change)/true_perc_change) %>%
   left_join(ci_df) %>%
   rowwise() %>%
   mutate(ci_check = between(true_perc_change, CI_low, CI_high) & !between(0,  CI_low, CI_high),
@@ -502,12 +504,13 @@ power_eval <- power_check_df %>%
          ci_check_interval_twotail = between(true_perc_change, CI_low, CI_high),
          ci_check_interval_righttail = between(true_perc_change, min_post, CI_high),
          # if the true trend isn't in the CI, what direction was the bias?
-         bias_out_ci = ifelse(ci_check_interval_twotail == FALSE, bias, NA)) %>%
-  select(sim_id, rep, bias, width, ci_check, ci_check_interval_twotail, ci_check_interval_righttail,
+         bias_out_ci = ifelse(ci_check_interval_twotail == FALSE, bias_comp, NA)) %>%
+  select(sim_id, rep, bias, bias_comp, relative_bias, width, ci_check, ci_check_interval_twotail, ci_check_interval_righttail,
          ci_check_left_tail, ci_check_any_decline, post_check_any_decline,
          bias_out_ci, CI_type, total_n) %>%
   group_by(sim_id, total_n, CI_type) %>%
-  summarize(#bias = mean(bias),
+  summarize(bias = mean(bias),
+            relative_bias = mean(relative_bias),
             width = mean(width),
             ci_check = sum(ci_check)/simn,
             ci_check_left_tail = sum(ci_check_left_tail)/simn,
