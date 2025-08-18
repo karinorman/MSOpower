@@ -206,7 +206,8 @@ map_model_df <- obs_occ %>%
   nest() %>%
   select(total_samp, scenario_id, repn = rep, model_data = data) %>%
   left_join(true_occ %>% 
-              select(scenario_id, repn = rep, true_trend = perc_change))
+              select(scenario_id, repn = rep, true_trend = perc_change)) %>%
+  ungroup()
 
 # gotta deal with the giant memory issues
 rm(hier_sim_list, sim_list_emu, obs_occ)
@@ -293,30 +294,117 @@ hierarch_model_check <- function(total_samp, scenario_id, repn, model_data, true
   
   #check_dist <- between(true_trend, min(post$perc_change),max(post$perc_change)) & !between(0, min(post$perc_change),max(post$perc_change))
   
-  return(list("power_check" = data.frame("scenario_id" = scenario_id, "rep" = repn,
-                                         "true_perc_change" = true_trend, "est_perc_change" = mean(post$perc_change),
-                                         #"success" = check_dist, 
-                                         "samps_under" = sum(true_trend > post$perc_change),
-                                         "samps_over" = sum(true_trend < post$perc_change)),
-              "posterior" = post
-  ))
+  readr::write_csv(data.frame("scenario_id" = scenario_id, "rep" = repn,
+                              "true_perc_change" = true_trend, "est_perc_change" = mean(post$perc_change),
+                              #"success" = check_dist, 
+                              "samps_under" = sum(true_trend > post$perc_change),
+                              "samps_over" = sum(true_trend < post$perc_change)),
+                   here::here("data/hierarchical_output/power_check", paste(scenario_id, repn, "total_samp", "power_check.csv", sep = "_")))
+  
+  readr::write_csv(post, here::here("data/hierarchical_output/posterior", paste(scenario_id, repn, "total_samp", "posterior.csv", sep = "_")))
+  
+  # return(list("power_check" = data.frame("scenario_id" = scenario_id, "rep" = repn,
+  #                                        "true_perc_change" = true_trend, "est_perc_change" = mean(post$perc_change),
+  #                                        #"success" = check_dist, 
+  #                                        "samps_under" = sum(true_trend > post$perc_change),
+  #                                        "samps_over" = sum(true_trend < post$perc_change)),
+  #             "posterior" = post
+  #))
 }
 
 # perform the power check
-plan(multisession, workers = 70)
+dir.create(here::here("data/hierarchical_output"))
+dir.create(here::here("data/hierarchical_output/posterior"))
+dir.create(here::here("data/hierarchical_output/power_check"))
+
+plan(multisession, workers = 60)
 hierarch_check_list <- furrr::future_pmap(map_model_df, hierarch_model_check, .options=furrr_options(seed = TRUE))
 
+# if it doesn't execute them all on first pass
+exec_files <- data.frame(file_name = list.files(here::here("data/hierarchical_output/posterior"))) %>%
+  separate(file_name, c("scenario_id", "repn"), sep = "_") %>%
+  mutate(repn = as.integer(repn))
+
+missing_scenario <- map_model_df %>% select(scenario_id, repn) %>%
+  left_join(exec_files %>% mutate(check = "executed")) %>% 
+  filter(is.na(check)) %>%
+  select(-check) %>% 
+  left_join(map_model_df) %>%
+  filter(total_samp < 5000)
+
+plan(multisession, workers = 30)
+hierarch_check_list <- furrr::future_pmap(missing_scenario, hierarch_model_check, .options=furrr_options(seed = TRUE))
+
 # get the pieces as two seperate dataframes
-hier_power_check_df <- map_dfr(1:length(hierarch_check_list), ~pluck(hierarch_check_list, .x, "power_check"))
-hier_power_check_post_df <- map_dfr(1:length(hierarch_check_list), ~pluck(hierarch_check_list, .x, "posterior"))
+hier_power_check_df <- map_dfr(list.files(here::here("data/hierarchical_output/power_check/"), full.names = TRUE), read.csv)
+hier_power_check_post_df <- map_dfr(list.files(here::here("data/hierarchical_output/posterior/"), full.names = TRUE), read.csv)
+
+# hier_power_check_df <- map_dfr(1:length(hierarch_check_list), ~pluck(hierarch_check_list, .x, "power_check"))
+# hier_power_check_post_df <- map_dfr(1:length(hierarch_check_list), ~pluck(hierarch_check_list, .x, "posterior"))
 
 # save out so we don't have to re run
 readr::write_csv(hier_power_check_df, here::here("data/hier_power_check_df.csv"))
 readr::write_csv(hier_power_check_post_df, here::here("data/hier_power_check_post_df.csv"))
 
+# build checks directly from sim outputs
+# let's get the sim's with the sample sizes we care about
+sim_keep <- sim_map %>% 
+  filter(total_samp < 5000) %>%
+  pull(scenario_id)
+
+ci_alpha_list <- c(0.5, 0.90, 0.95)
+
+ci_df <- hier_power_check_post_df %>%
+  filter(scenario_id %in% sim_keep) %>%
+  select(scenario_id, rep, perc_change) %>%
+  group_by(scenario_id, rep) %>%
+  reframe(CI_low = map(ci_alpha_list, 
+                       ~as.data.frame(bayestestR::ci(perc_change, ci = .x, method = "ETI"))$CI_low) %>% unlist(),
+          CI_high = map(ci_alpha_list, 
+                        ~as.data.frame(bayestestR::ci(perc_change, ci = .x, method = "ETI"))$CI_high)  %>% unlist(),
+          CI_type = ci_alpha_list,
+          min_post = min(perc_change),
+          max_post = max(perc_change)) %>%
+  ungroup() %>%
+  mutate(width = CI_high - CI_low)
+
+power_plot_df <- hier_power_check_df %>%
+  rowwise() %>%
+  mutate(total_n = sum(low_n, high_n, na.rm = TRUE)) %>%
+  ungroup() %>%
+  select(sim_id, rep, true_perc_change, est_perc_change, total_n) %>%
+  mutate(bias = true_perc_change < est_perc_change) %>%
+  left_join(ci_df) %>%
+  rowwise() %>%
+  mutate(ci_check = between(true_perc_change, CI_low, CI_high) & !between(0,  CI_low, CI_high),
+         ci_check_right_tail = true_perc_change < CI_high & CI_high < 0,
+         ci_check_any_decline = CI_high < 0,
+         ci_check_interval_twotail = between(true_perc_change, CI_low, CI_high),
+         ci_check_interval_righttail = between(true_perc_change, min_post, CI_high),
+         # if the true trend isn't in the CI, what direction was the bias?
+         bias_out_ci = ifelse(ci_check_interval_righttail == FALSE, bias, NA)) %>%
+  select(sim_id, rep, bias, width, ci_check, ci_check_interval_twotail, ci_check_interval_righttail,
+         ci_check_right_tail, ci_check_any_decline,
+         bias_out_ci, CI_type, total_n) %>%
+  group_by(sim_id, total_n, CI_type) %>%
+  summarize(#bias = mean(bias),
+    width = mean(width),
+    ci_check = sum(ci_check)/simn,
+    ci_check_right_tail = sum(ci_check_right_tail)/simn,
+    ci_check_any_decline = sum(ci_check_any_decline)/simn,
+    ci_check_interval_twotail = sum(ci_check_interval_twotail)/simn,
+    ci_check_interval_righttail = sum(ci_check_interval_righttail)/simn,
+    percent_trend_lower = sum(bias) /simn,
+    percent_exclude_trend_lower = sum(bias_out_ci, na.rm = TRUE) / sum(!is.na(bias_out_ci))) %>%
+  left_join(sim_scenarios_emu) %>%
+  group_by(psi, p, phi) %>%
+  mutate(line_id = cur_group_id()) %>%
+  separate(sim_id, c("emu", "sim_num"), sep = "_", remove = FALSE)
+
+
 power_plot_df <- hier_power_check_df %>%
   group_by(scenario_id) %>%
-  summarize(across(c(success), ~sum(.x)/simn)) %>%
+  summarize(across(c(success), ~sum(.x)/n())) %>%
   left_join(sim_map %>%
              # mutate(scenario_id = as.character(scenario_id)) %>%
               select(-c(high_name, low_name, emu)) %>% distinct()
