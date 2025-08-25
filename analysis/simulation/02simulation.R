@@ -297,7 +297,10 @@ sim_map_occ <- sim_map %>%
       return(pluck(sim_list_emu, unique(y$low_name), unique(y$rep), "obs_occ") %>% mutate(landtype = "low"))
     )
   })) %>%
-  unnest(cols = "data")
+  unnest(cols = "data") %>%
+  ungroup() %>%
+  rename(high_n = sample_size) %>%
+  mutate(low_n = round(high_n*(1/3)), total_n = (high_n + low_n))
 
 true_occ_paired <- pmap(sim_map_names %>% select(-sample_size), function(high_name, low_name){
   map_dfr(1:simn, ~pluck(sim_list_emu, high_name, .x, "true_occ") %>%
@@ -451,6 +454,9 @@ model_check <- function(high_name, low_name, sample_size, repn, high_occ, low_oc
               "posterior" = post
   ))
 }
+
+
+
 
 #pwr_check <- model_check(high_name = "BRE_21", low_name = "BRE_1", sample_size = 40, repn = 1)
 
