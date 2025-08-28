@@ -87,7 +87,8 @@ model_check_nimble <- function(high_name, low_name, high_n, low_n, sample_size, 
                      samplesAsCodaMCMC = TRUE)
 
   summary <- MCMCsummary(samples, probs = c(0.025, 0.5, 0.95, 0.975)) %>%
-    mutate(high_name = high_name, low_name = low_name, rep = repn)
+    mutate(high_name = high_name, low_name = low_name, rep = repn) %>%
+    rownames_to_column("parameter")
 
   readr::write_csv(summary, paste0(here::here("data/nimble/emu_summary/"), "/", high_name, "_", repn, "_summary.csv"))
   saveRDS(samples, paste0(here::here("data/nimble/emu_posterior/"), "/", high_name, "_", repn, "_posterior.rds"))
