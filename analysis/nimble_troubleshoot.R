@@ -5,6 +5,7 @@ library(MCMCvis)
 
 # model object, which can be made outside of iterating and passed in
 
+# function to initialize a model object for a given sample size
 init_model <- function(n, year, visit, model_obj){
 
   nsite <- n
@@ -47,7 +48,8 @@ init_model <- function(n, year, visit, model_obj){
   return(complist)
 }
 
-model_check_nimble <- function(high_name, low_name, high_n, low_n, sample_size, repn, high_occ, low_occ, compile_model) {
+# function to fit model to data for each replicate, save out results
+model_check_nimble <- function(high_name, low_name, high_n, low_n, sample_size, repn, high_occ, low_occ, nseason, compile_model) {
 
   print(c(high_name, repn))
 
@@ -87,9 +89,19 @@ model_check_nimble <- function(high_name, low_name, high_n, low_n, sample_size, 
   summary <- MCMCsummary(samples, probs = c(0.025, 0.5, 0.95, 0.975)) %>%
     mutate(high_name = high_name, low_name = low_name, rep = repn)
 
-  readr::write_csv(summary, paste0(here::here("data/nimble/emu_summary/"), high_name, "_", repn, "_summary.csv"))
-  saveRDS(samples, paste0(here::here("data/nimble/emu_posterior/"), high_name, "_", repn, "_posterior.rds"))
+  readr::write_csv(summary, paste0(here::here("data/nimble/emu_summary/"), "/", high_name, "_", repn, "_summary.csv"))
+  saveRDS(samples, paste0(here::here("data/nimble/emu_posterior/"), "/", high_name, "_", repn, "_posterior.rds"))
 }
+
+
+
+# let's get a single EMU example
+BRE_scenarios <- sim_map_occ %>% select(high_name) %>%
+  tidyr::separate(high_name, into = c("EMU", "scenario"), sep = "_", remove = FALSE) %>%
+  filter(EMU == "BRE") %>%
+  pull(high_name)
+
+BRE_sim_occ <- sim_map_occ %>% filter(high_name %in% BRE_scenarios)
 
 # initialize save out directories
 dir.create(here::here("data/nimble/emu_summary"), recursive = TRUE)
@@ -138,35 +150,62 @@ dynoccmod_code <- nimbleCode({
 
 # for each sample size:
 # 2: initialize and compile model
-purrr::map(unique(BRE_sim_occ$total_n), function(samp_size, n_year, n_visit){
-  browser()
+purrr::map(unique(BRE_sim_occ$total_n), function(samp_size, n_year, n_visit, data){
 
   comp_model <- init_model(n = samp_size, year = n_year, visit = n_visit, model_obj = dynoccmod_code)
 
   # get only reps for the sample size that we have an initialized model for
-  rep_df <- BRE_sim_occ %>%
+  rep_df <- data %>%
     select(high_name, low_name, high_n, low_n, sample_size = total_n, repn = rep, high_occ, low_occ) %>%
     filter(sample_size == samp_size)
 
   # for each rep in each sample size
   # 3: initialize and update model, get posteriors
-  plan(multisession, workers = 70)
-  power_check_list <- furrr::future_pmap(rep_df, model_check_nimble, compile_model = comp_model,
-                                         .options=furrr_options(seed = TRUE))
+  # plan(multisession, workers = 50)
+  # power_check_list <- furrr::future_pmap(rep_df, model_check_nimble, compile_model = comp_model,
+  #                                        nseason = n_year,
+  #                                        .options=furrr_options(seed = TRUE))
+  
+ purrr::pmap(rep_df, model_check_nimble, compile_model = comp_model,
+                                         nseason = n_year)
 
-}, n_year = nseason, n_visit = n_vis # the arguments that are constant
+}, n_year = 10, n_visit = 2, data = BRE_sim_occ # the arguments that are constant
 )
 
-# let's get a single EMU example
-BRE_scenarios <- sim_map_occ %>% select(high_name) %>%
-  tidyr::separate(high_name, into = c("EMU", "scenario"), sep = "_", remove = FALSE) %>%
-  filter(EMU == "BRE") %>%
-  pull(high_name)
 
-BRE_sim_occ <- sim_map_occ %>% filter(high_name %in% BRE_scenarios)
+# if we have to restart, see what reps have already been done
+exec_files <- data.frame(file_name = list.files(here::here("data/nimble/emu_posterior"))) %>%
+  separate(file_name, c("EMU", "scenario", "rep"), sep = "_") %>%
+  mutate(rep = as.integer(rep), execute = "yes") %>%
+  unite("high_name", EMU, scenario)
 
+BRE_sim_occ_missing <- BRE_sim_occ %>%
+  left_join(exec_files) %>%
+  filter(is.na(execute)) %>%
+  select(-execute)
 
-
-
-
+### Run again with only missing files
+purrr::map(unique(BRE_sim_occ_missing$total_n), function(samp_size, n_year, n_visit, data){
+  
+  comp_model <- init_model(n = samp_size, year = n_year, visit = n_visit, model_obj = dynoccmod_code)
+  
+  # get only reps for the sample size that we have an initialized model for
+  rep_df <- data %>%
+    select(high_name, low_name, high_n, low_n, sample_size = total_n, repn = rep, high_occ, low_occ) %>%
+    filter(sample_size == samp_size)
+  
+  # for each rep in each sample size
+  # 3: initialize and update model, get posteriors
+  # plan(multisession, workers = 50)
+  # power_check_list <- furrr::future_pmap(rep_df, model_check_nimble, compile_model = comp_model,
+  #                                        nseason = n_year,
+  #                                        .options=furrr_options(seed = TRUE))
+  
+  plan(multisession, workers = 50)
+  furrr::future_pmap(rep_df, model_check_nimble, compile_model = comp_model,
+              nseason = n_year,
+              .options = furrr_options(seed = TRUE))
+  
+}, n_year = 10, n_visit = 2, data = BRE_sim_occ_missing # the arguments that are constant
+)
 
