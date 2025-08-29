@@ -2,6 +2,7 @@ library(dplyr)
 library(nimble)
 library(nimbleEcology)
 library(MCMCvis)
+library(carrier)
 
 # model object, which can be made outside of iterating and passed in
 
@@ -49,23 +50,24 @@ init_model <- function(n, year, visit, model_obj){
 }
 
 # function to fit model to data for each replicate, save out results
-model_check_nimble <- function(high_name, low_name, high_n, low_n, sample_size, repn, high_occ, low_occ, nseason, compile_model) {
+model_check_nimble <- #crate(
+  function(high_name, low_name, high_n, low_n, sample_size, repn, high_occ, low_occ, nseason, compile_model) {
 
   print(c(high_name, repn))
 
   # get appropriate sample size from the obs_occ
-  if(low_n > n_distinct(low_occ$site_id)){
-    low_n = n_distinct(low_occ$site_id)
+  if(low_n > dplyr::n_distinct(low_occ$site_id)){
+    low_n = dplyr::n_distinct(low_occ$site_id)
   }
 
-  obs_occ_df <- bind_rows(low_occ %>% filter(site_id %in% sample(unique(low_occ$site_id), low_n, replace = FALSE)),
-                          high_occ %>% filter(site_id %in% sample(unique(high_occ$site_id), high_n, replace = FALSE))) %>%
-    arrange(visit)
+  obs_occ_df <- dplyr::bind_rows(low_occ |> dplyr::filter(site_id %in% sample(unique(low_occ$site_id), low_n, replace = FALSE)),
+                          high_occ |> dplyr::filter(site_id %in% sample(unique(high_occ$site_id), high_n, replace = FALSE))) |>
+    dplyr::arrange(visit)
 
-  obs_occ_array <- obs_occ_df %>%
-    select(-c(site_id, landtype)) %>%
-    split(obs_occ_df$visit) %>%
-    map(., ~ .x %>% select(-visit) %>% as.matrix()) %>%
+  obs_occ_array <- obs_occ_df |>
+    dplyr::select(-c(site_id, landtype)) |>
+    split(obs_occ_df$visit) |>
+    purrr::map( ~ .x |> dplyr::select(-visit) |> as.matrix()) |>
     simplify2array()
 
   # list of new initialized variables
@@ -78,20 +80,17 @@ model_check_nimble <- function(high_name, low_name, high_n, low_n, sample_size, 
   # update model with data
   compile_model$mod$y <- obs_occ_array
   #compile_model$setData("y")
-  fit <- runMCMC(compile_model$mcmc, niter = 1000, nchains = 2, nburnin = 500,
+  fit <- nimble::runMCMC(compile_model$mcmc, niter = 1000, nchains = 2, nburnin = 500,
                  samplesAsCodaMCMC = TRUE,
                  inits = new_inits)
 
-  # Run the MCMC
-  samples <- runMCMC(compile_model$mcmc, niter = 1000, nchains = 2, nburnin = 500,
-                     samplesAsCodaMCMC = TRUE)
-
-  summary <- MCMCsummary(samples, probs = c(0.025, 0.5, 0.95, 0.975)) %>%
-    mutate(high_name = high_name, low_name = low_name, rep = repn)
+  summary <- MCMCvis::MCMCsummary(fit, probs = c(0.025, 0.5, 0.95, 0.975)) |>
+    dplyr::mutate(high_name = high_name, low_name = low_name, rep = repn)
 
   readr::write_csv(summary, paste0(here::here("data/nimble/emu_summary/"), "/", high_name, "_", repn, "_summary.csv"))
-  saveRDS(samples, paste0(here::here("data/nimble/emu_posterior/"), "/", high_name, "_", repn, "_posterior.rds"))
+  saveRDS(fit, paste0(here::here("data/nimble/emu_posterior/"), "/", high_name, "_", repn, "_posterior.rds"))
 }
+#)
 
 
 
@@ -186,6 +185,7 @@ BRE_sim_occ_missing <- BRE_sim_occ %>%
 
 ### Run again with only missing files
 purrr::map(unique(BRE_sim_occ_missing$total_n), function(samp_size, n_year, n_visit, data){
+  #browser()
   
   comp_model <- init_model(n = samp_size, year = n_year, visit = n_visit, model_obj = dynoccmod_code)
   
@@ -194,17 +194,12 @@ purrr::map(unique(BRE_sim_occ_missing$total_n), function(samp_size, n_year, n_vi
     select(high_name, low_name, high_n, low_n, sample_size = total_n, repn = rep, high_occ, low_occ) %>%
     filter(sample_size == samp_size)
   
-  # for each rep in each sample size
-  # 3: initialize and update model, get posteriors
   # plan(multisession, workers = 50)
-  # power_check_list <- furrr::future_pmap(rep_df, model_check_nimble, compile_model = comp_model,
-  #                                        nseason = n_year,
-  #                                        .options=furrr_options(seed = TRUE))
+  # furrr::future_pmap(rep_df, model_check_nimble, compile_model = comp_model,
+  #             nseason = n_year,
+  #             .options = furrr_options(seed = TRUE, globals = FALSE))
   
-  plan(multisession, workers = 50)
-  furrr::future_pmap(rep_df, model_check_nimble, compile_model = comp_model,
-              nseason = n_year,
-              .options = furrr_options(seed = TRUE))
+  pmap(rep_df, model_check_nimble, compile_model = comp_model, nseason = n_year)
   
 }, n_year = 10, n_visit = 2, data = BRE_sim_occ_missing # the arguments that are constant
 )
