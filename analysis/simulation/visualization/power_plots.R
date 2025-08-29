@@ -248,8 +248,8 @@ ggsave(here::here("figures/power_plot_detection.jpeg"), power_by_detection, widt
 ##### Bias #####
 
 ## Absolute Bias
-power_eval %>%
-  filter(total_n > 250) %>%
+bias_plt <- power_eval %>%
+  #filter(total_n > 250) %>%
   select(-sim_id) %>%
   left_join(sim_scenarios_table, by = c("phi", "p", "psi" = "psi_high")) %>%
   mutate(sim_type = paste0(simulation_scenario, ":  \u03A8 = ", psi, ", \u03C6 = ", phi, ", p = ", p)) %>%
@@ -283,9 +283,11 @@ power_eval %>%
   ylab("Mean absolute bias") +
   xlab("Sample Size")
 
+ggsave(here::here("figures/bias_plot.png"), bias_plt, width = 19.6, height = 12)
+
 ## Relative Bias
-power_eval %>%
-  filter(total_n > 250) %>%
+rel_bias_plt <- power_eval %>%
+  #filter(total_n > 250) %>%
   select(-sim_id) %>%
   left_join(sim_scenarios_table, by = c("phi", "p", "psi" = "psi_high")) %>%
   mutate(sim_type = paste0(simulation_scenario, ":  \u03A8 = ", psi, ", \u03C6 = ", phi, ", p = ", p)) %>%
@@ -318,6 +320,8 @@ power_eval %>%
   ) +
   ylab("Mean absolute bias") +
   xlab("Sample Size")
+
+ggsave(here::here("figures/relative_bias_plot.png"), rel_bias_plt, width = 19.6, height = 12)
 
 ## For a two-tailed, alpha = 0.05 test, what percentage of reps is the true trend less than the estimated trend
 ### This plot shows that we're slightly more likely to underestimate the trend (true trend is less than estimated trend) across all replicates
@@ -394,7 +398,7 @@ bias_ci_in_plt <- power_eval %>%
   ylab("Percent of Reps where True Trend not in CI and is less than estimated trend") +
   xlab("Sample Size")
 
-ggsave(here::here("figures/bias_plot.png"), bias_ci_in_plt, width = 19.6, height = 12)
+#ggsave(here::here("figures/bias_plot.png"), bias_ci_in_plt, width = 19.6, height = 12)
 
 ## Precision figure ##
 
