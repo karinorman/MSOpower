@@ -302,6 +302,9 @@ sim_map_occ <- sim_map %>%
   rename(high_n = sample_size) %>%
   mutate(low_n = round(high_n*(1/3)), total_n = (high_n + low_n))
 
+sim_map_metadata <- sim_map_occ %>% select(-c(high_occ, low_occ))
+readr::write_csv(sim_map_metadata, here::here("data/sim_map_metadata.csv"))
+
 true_occ_paired <- pmap(sim_map_names %>% select(-sample_size), function(high_name, low_name){
   map_dfr(1:simn, ~pluck(sim_list_emu, high_name, .x, "true_occ") %>%
             bind_rows(pluck(sim_list_emu, low_name, .x, "true_occ")) %>%
@@ -314,6 +317,7 @@ true_occ_paired <- pmap(sim_map_names %>% select(-sample_size), function(high_na
   bind_rows() %>%
   mutate(perc_change = (t10-t1)/t1)
 
+readr::write_csv(true_occ_paired, here::here("data/true_occ_paired.csv"))
 
 model_check <- function(high_name, low_name, sample_size, repn, high_occ, low_occ) {
 
