@@ -204,3 +204,40 @@ purrr::map(unique(BRE_sim_occ_missing$total_n), function(samp_size, n_year, n_vi
 }, n_year = 10, n_visit = 2, data = BRE_sim_occ_missing # the arguments that are constant
 )
 
+###########################################################
+################## Processing runs ########################
+###########################################################
+
+## This stuff we should already have, but we can read it in too
+# ## Fixed study characteristics
+# nyear = 10
+# #n_sites = sum(emu_veg$hex_num)
+# n_vis = 2
+# 
+# # read in data we need
+# true_occ_paired <- read.csv(here::here("data/true_occ_paired.csv"))
+# testrds <- readRDS(here::here("data/nimble/emu_posterior/BRE_101_1_posterior.rds"))
+# sim_map_metadata <- read.csv(here::here("data/sim_map_metadata.csv"))
+
+# read in estimates
+nimble_output <- purrr::map_dfr(list.files(here::here("data/nimble/emu_summary/"), full.names = TRUE), ~read.csv(.x) %>% mutate(parameter = colnames(testrds$chain1)))
+
+# perc_change power checks 
+perc_change_check <- nimble_output %>%
+  filter(parameter == "perc_change") %>%
+  select(mean, ci025 = X2.5., ci97.5 = X97.5., high_name, rep) %>%
+  left_join(true_occ_paired %>% select(high_name, true_perc_change = perc_change, rep)) %>%
+  # pivot_longer(starts_with("ci"), names_to = "ci_type", values_to = "ci_value") %>%
+  # mutate(ci_low = (mean - abs(ci_value)), ci_high = (mean + abs(ci_value))) %>%
+  rowwise() %>%
+  mutate(ci_two_tail = between(true_perc_change, ci025, ci97.5) & !between(0,  ci025, ci97.5)) %>%
+  group_by(high_name) %>%
+  summarize(ci_two_tail = sum(ci_two_tail)/n(),
+            rep_count = n()) %>%
+  left_join(sim_map_metadata %>% select(high_name, total_n) %>% distinct()) %>%
+  left_join(sim_scenarios_emu %>% select(high_name = sim_id, psi, phi, p)) %>%
+  group_by(psi, p, phi) %>%
+  mutate(line_id = cur_group_id()) %>%
+  separate(high_name, c("emu", "sim_num"), sep = "_", remove = FALSE)
+
+readr::write_csv(perc_change_check, here::here("data/nimble_power_check.csv"))
