@@ -3,6 +3,8 @@ library(nimble)
 library(nimbleEcology)
 library(MCMCvis)
 library(carrier)
+library(doParallel)
+library(foreach)
 
 # model object, which can be made outside of iterating and passed in
 
@@ -85,10 +87,13 @@ model_check_nimble <- #crate(
                  inits = new_inits)
 
   summary <- MCMCvis::MCMCsummary(fit, probs = c(0.025, 0.5, 0.95, 0.975)) |>
-    dplyr::mutate(high_name = high_name, low_name = low_name, rep = repn)
+    dplyr::mutate(high_name = high_name, low_name = low_name, rep = repn) |>
+    tibble::rownames_to_column(var = "parameter")
 
   readr::write_csv(summary, paste0(here::here("data/nimble/emu_summary/"), "/", high_name, "_", repn, "_summary.csv"))
   saveRDS(fit, paste0(here::here("data/nimble/emu_posterior/"), "/", high_name, "_", repn, "_posterior.rds"))
+  
+  return(c(high_name, repn))
 }
 #)
 
@@ -184,25 +189,52 @@ BRE_sim_occ_missing <- BRE_sim_occ %>%
   select(-execute)
 
 ### Run again with only missing files
-purrr::map(unique(BRE_sim_occ_missing$total_n), function(samp_size, n_year, n_visit, data){
-  #browser()
-  
-  comp_model <- init_model(n = samp_size, year = n_year, visit = n_visit, model_obj = dynoccmod_code)
-  
-  # get only reps for the sample size that we have an initialized model for
-  rep_df <- data %>%
-    select(high_name, low_name, high_n, low_n, sample_size = total_n, repn = rep, high_occ, low_occ) %>%
-    filter(sample_size == samp_size)
-  
-  # plan(multisession, workers = 50)
-  # furrr::future_pmap(rep_df, model_check_nimble, compile_model = comp_model,
-  #             nseason = n_year,
-  #             .options = furrr_options(seed = TRUE, globals = FALSE))
-  
-  pmap(rep_df, model_check_nimble, compile_model = comp_model, nseason = n_year)
-  
-}, n_year = 10, n_visit = 2, data = BRE_sim_occ_missing # the arguments that are constant
-)
+# purrr::map(unique(BRE_sim_occ_missing$total_n), function(samp_size, n_year, n_visit, data){
+#   browser()
+#   
+#   comp_model <- init_model(n = samp_size, year = n_year, visit = n_visit, model_obj = dynoccmod_code)
+#   
+#   # get only reps for the sample size that we have an initialized model for
+#   rep_df <- data %>%
+#     select(high_name, low_name, high_n, low_n, sample_size = total_n, repn = rep, high_occ, low_occ) %>%
+#     filter(sample_size == samp_size)
+#   
+#   # plan(multisession, workers = 50)
+#   # furrr::future_pmap(rep_df, model_check_nimble, compile_model = comp_model,
+#   #             nseason = n_year,
+#   #             .options = furrr_options(seed = TRUE, globals = FALSE))
+#   
+#   pmap(rep_df, model_check_nimble, compile_model = comp_model, nseason = n_year)
+#   
+# }, n_year = 10, n_visit = 2, data = BRE_sim_occ_missing # the arguments that are constant
+# )
+
+# purrr::map(unique(BRE_sim_occ_missing$total_n), function(samp_size, n_year, n_visit, data){
+#   browser()
+
+n_year = 10
+n_visit = 2
+data = BRE_sim_occ_missing
+samp_size = 267
+
+comp_model <- init_model(n = samp_size, year = n_year, visit = n_visit, model_obj = dynoccmod_code)
+
+# get only reps for the sample size that we have an initialized model for
+rep_df <- data %>%
+  select(high_name, low_name, high_n, low_n, sample_size = total_n, repn = rep, high_occ, low_occ) %>%
+  filter(sample_size == samp_size)
+
+
+cl <- makeCluster(40)
+registerDoParallel(cl)
+
+test <- foreach(iterators::iter(rep_df, by = "row"),
+                .combine = "cbind") %dopar% model_check_nimble(high_name = high_name, low_name = low_name, high_n = high_n, low_n = low_n, 
+                                                               sample_size = sample_size, repn = repn, high_occ = high_occ, low_occ = low_occ,
+                                                               compile_model = comp_model,
+                                                               nseason = n_year)
+stopCluster(cl)
+
 
 ###########################################################
 ################## Processing runs ########################
