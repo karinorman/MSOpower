@@ -51,6 +51,76 @@ init_model <- function(n, year, visit, model_obj){
   return(complist)
 }
 
+update_model_data <- function(high_name, low_name, high_n, low_n, sample_size, repn, high_occ, low_occ, nseason, compile_model) {
+  
+  # get appropriate sample size from the obs_occ
+  if(low_n > dplyr::n_distinct(low_occ$site_id)){
+    low_n = dplyr::n_distinct(low_occ$site_id)
+  }
+  
+  obs_occ_df <- dplyr::bind_rows(low_occ |> dplyr::filter(site_id %in% sample(unique(low_occ$site_id), low_n, replace = FALSE)),
+                                 high_occ |> dplyr::filter(site_id %in% sample(unique(high_occ$site_id), high_n, replace = FALSE))) |>
+    dplyr::arrange(visit)
+  
+  obs_occ_array <- obs_occ_df |>
+    dplyr::select(-c(site_id, landtype)) |>
+    split(obs_occ_df$visit) |>
+    purrr::map( ~ .x |> dplyr::select(-visit) |> as.matrix()) |>
+    simplify2array()
+  # 
+  # # list of new initialized variables
+  # new_inits <-  list(
+  #   colonize = 0.5,
+  #   init_occ = 0.5,
+  #   detect = 0.5,
+  #   persist = rep(0.5, (nseason-1)))
+  
+  # update model with data
+  compile_model$mod$y <- obs_occ_array
+  
+  return(list(high_name = high_name, rep = repn, model = compile_model))
+}
+
+# get model for each rep from the initial model 
+models_to_fit <- purrr::map(unique(BRE_sim_occ_missing$total_n), function(samp_size, n_year, n_visit, data){
+
+  comp_model <- init_model(n = samp_size, year = n_year, visit = n_visit, model_obj = dynoccmod_code)
+
+  # get only reps for the sample size that we have an initialized model for
+  rep_df <- data %>%
+    select(high_name, low_name, high_n, low_n, sample_size = total_n, repn = rep, high_occ, low_occ) %>%
+    filter(sample_size == samp_size)
+
+
+  samp_size_models <- pmap(rep_df, update_model_data, compile_model = comp_model, nseason = n_year)
+
+  return(samp_size_models)
+}, n_year = 10, n_visit = 2, data = BRE_sim_occ_missing # the arguments that are constant
+) %>% unlist(recursive = FALSE)
+
+plan(multisession, workers = 5)
+furrr::future_map(models_to_fit, function(model_list, nseason){
+  
+  mod <- model_list$model
+  
+  #compile_model$setData("y")
+  fit <- nimble::runMCMC(mod$mcmc, niter = 1000, nchains = 2, nburnin = 500,
+                         samplesAsCodaMCMC = TRUE,
+                         inits =  list(
+                             colonize = 0.5,
+                             init_occ = 0.5,
+                             detect = 0.5,
+                             persist = rep(0.5, (nseason-1))))
+  
+  summary <- MCMCvis::MCMCsummary(fit, probs = c(0.025, 0.5, 0.95, 0.975)) |>
+    dplyr::mutate(high_name = model_list$high_name, rep = model_list$rep) |>
+    tibble::rownames_to_column(var = "parameter")
+  
+  readr::write_csv(summary, paste0(here::here("data/nimble/emu_summary/"), "/", model_list$high_name, "_", model_list$rep, "_summary.csv"))
+  saveRDS(fit, paste0(here::here("data/nimble/emu_posterior/"), "/",  model_list$high_name, "_", model_list$rep, "_posterior.rds"))
+  
+}, nseason = 10)
+
 # function to fit model to data for each replicate, save out results
 model_check_nimble <- #crate(
   function(high_name, low_name, high_n, low_n, sample_size, repn, high_occ, low_occ, nseason, compile_model) {
@@ -225,10 +295,11 @@ rep_df <- data %>%
   filter(sample_size == samp_size)
 
 
-cl <- makeCluster(40)
+cl <- makeCluster(10)
 registerDoParallel(cl)
 
-test <- foreach(iterators::iter(rep_df, by = "row"),
+test <- foreach(high_name = rep_df$high_name, low_name = rep_df$low_name, high_n = rep_df$high_n, low_n = rep_df$low_n, 
+                sample_size = rep_df$sample_size, repn = rep_df$repn, high_occ = rep_df$high_occ, low_occ = rep_df$low_occ,
                 .combine = "cbind") %dopar% model_check_nimble(high_name = high_name, low_name = low_name, high_n = high_n, low_n = low_n, 
                                                                sample_size = sample_size, repn = repn, high_occ = high_occ, low_occ = low_occ,
                                                                compile_model = comp_model,
