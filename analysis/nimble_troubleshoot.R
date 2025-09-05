@@ -123,7 +123,10 @@ furrr::future_map(models_to_fit, function(model_list, nseason){
 
 # function to fit model to data for each replicate, save out results
 model_check_nimble <- #crate(
+
   function(high_name, low_name, high_n, low_n, sample_size, repn, high_occ, low_occ, nseason, compile_model) {
+
+    library(nimble)
 
   print(c(high_name, repn))
 
@@ -162,7 +165,7 @@ model_check_nimble <- #crate(
 
   readr::write_csv(summary, paste0(here::here("data/nimble/emu_summary/"), "/", high_name, "_", repn, "_summary.csv"))
   saveRDS(fit, paste0(here::here("data/nimble/emu_posterior/"), "/", high_name, "_", repn, "_posterior.rds"))
-  
+
   return(c(high_name, repn))
 }
 #)
@@ -239,7 +242,7 @@ purrr::map(unique(BRE_sim_occ$total_n), function(samp_size, n_year, n_visit, dat
   # power_check_list <- furrr::future_pmap(rep_df, model_check_nimble, compile_model = comp_model,
   #                                        nseason = n_year,
   #                                        .options=furrr_options(seed = TRUE))
-  
+
  purrr::pmap(rep_df, model_check_nimble, compile_model = comp_model,
                                          nseason = n_year)
 
@@ -259,25 +262,25 @@ BRE_sim_occ_missing <- BRE_sim_occ %>%
   select(-execute)
 
 ### Run again with only missing files
-# purrr::map(unique(BRE_sim_occ_missing$total_n), function(samp_size, n_year, n_visit, data){
-#   browser()
-#   
-#   comp_model <- init_model(n = samp_size, year = n_year, visit = n_visit, model_obj = dynoccmod_code)
-#   
-#   # get only reps for the sample size that we have an initialized model for
-#   rep_df <- data %>%
-#     select(high_name, low_name, high_n, low_n, sample_size = total_n, repn = rep, high_occ, low_occ) %>%
-#     filter(sample_size == samp_size)
-#   
-#   # plan(multisession, workers = 50)
-#   # furrr::future_pmap(rep_df, model_check_nimble, compile_model = comp_model,
-#   #             nseason = n_year,
-#   #             .options = furrr_options(seed = TRUE, globals = FALSE))
-#   
-#   pmap(rep_df, model_check_nimble, compile_model = comp_model, nseason = n_year)
-#   
-# }, n_year = 10, n_visit = 2, data = BRE_sim_occ_missing # the arguments that are constant
-# )
+purrr::map(unique(BRE_sim_occ_missing$total_n), function(samp_size, n_year, n_visit, data){
+  browser()
+
+  comp_model <- init_model(n = samp_size, year = n_year, visit = n_visit, model_obj = dynoccmod_code)
+
+  # get only reps for the sample size that we have an initialized model for
+  rep_df <- data %>%
+    select(high_name, low_name, high_n, low_n, sample_size = total_n, repn = rep, high_occ, low_occ) %>%
+    filter(sample_size == samp_size)
+
+  # plan(multisession, workers = 50)
+  # furrr::future_pmap(rep_df, model_check_nimble, compile_model = comp_model,
+  #             nseason = n_year,
+  #             .options = furrr_options(seed = TRUE, globals = FALSE))
+
+  pmap(rep_df, model_check_nimble, compile_model = comp_model, nseason = n_year)
+
+}, n_year = 10, n_visit = 2, data = BRE_sim_occ_missing # the arguments that are constant
+)
 
 # purrr::map(unique(BRE_sim_occ_missing$total_n), function(samp_size, n_year, n_visit, data){
 #   browser()
@@ -316,7 +319,7 @@ stopCluster(cl)
 # nyear = 10
 # #n_sites = sum(emu_veg$hex_num)
 # n_vis = 2
-# 
+#
 # # read in data we need
 # true_occ_paired <- read.csv(here::here("data/true_occ_paired.csv"))
 # testrds <- readRDS(here::here("data/nimble/emu_posterior/BRE_101_1_posterior.rds"))
@@ -325,7 +328,7 @@ stopCluster(cl)
 # read in estimates
 nimble_output <- purrr::map_dfr(list.files(here::here("data/nimble/emu_summary/"), full.names = TRUE), ~read.csv(.x) %>% mutate(parameter = colnames(testrds$chain1)))
 
-# perc_change power checks 
+# perc_change power checks
 perc_change_check <- nimble_output %>%
   filter(parameter == "perc_change") %>%
   select(mean, ci025 = X2.5., ci97.5 = X97.5., high_name, rep) %>%
