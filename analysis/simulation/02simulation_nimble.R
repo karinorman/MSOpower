@@ -1,8 +1,3 @@
-library(dplyr)
-library(nimble)
-library(nimbleEcology)
-library(MCMCvis)
-
 ####################################################################################################################
 ## Power Analysis Goal: Owl occupancy rates must show a stable or increasing trend after 10 years of monitoring.
 ## The study design to verify this criterion must have a power of 90% (Type II error rate β = 0.10) to detect a
@@ -13,7 +8,9 @@ library(dplyr)
 library(tidyr)
 library(purrr)
 library(furrr)
-library(spOccupancy)
+library(nimble)
+library(nimbleEcology)
+library(MCMCvis)
 
 # real world vegtypes for each emu
 emu_veg <- read.csv(here::here("data/EMU_veg_types.csv")) %>%
@@ -193,50 +190,27 @@ sim_map_data <- bind_rows(sim_map %>% rename(sample_size = high_n) %>%
   mutate(samp_data = list(pmap(data, sample_data) %>% bind_rows())) %>%
   select(-data) %>%
   unnest(samp_data) %>%
-  nest(data = -c(emu, total_n))
+  nest(data = -c(emu, total_n)) %>%
+  ungroup()
+
+sim_map_data_test <- bind_rows(sim_map %>% rename(sample_size = high_n) %>%
+                                 mutate(name = high_name) %>%
+                                 select(-c(low_name, low_n)),
+                               sim_map %>% rename(name = low_name, sample_size = low_n) %>%
+                                 select(-c(high_n))) %>%
+  filter(rep < 11) %>%
+  nest(data = c(name, rep, sample_size)) %>%
+  rowwise() %>%
+  mutate(samp_data = list(pmap(data, sample_data) %>% bind_rows())) %>%
+  select(-data) %>%
+  unnest(samp_data) %>%
+  nest(data = -c(emu, total_n)) %>%
+  ungroup() %>%
+  filter(total_n < 15)
 
 ##############################################
 ########### Model and Power check ############
 ##############################################
-
-# Model code for single EMU year estimate
-dynoccmod_code <- nimbleCode({
-
-  # The whole likelihood for the dynamic occupancy model is contained inside
-  # dDynOcc_sss. The suffix _sss indicates that persistence, colonization, and
-  # detection are provided as scalars (one value for the whole site's
-  # detection history). Other variants exist with suffixes like _svm (which
-  # would mean that persistence is (s)calar, colonization is a (v)ector
-  # varying with season, and detection is a (m)atrix varying with season and
-  # with replicate)
-
-  for (i in 1:nsite) {
-    y[i, 1:nseason, 1:nrep] ~ dDynOcc_vss(probPersist = persist[1:(nseason-1)],
-                                          probColonize = colonize,
-                                          init = init_occ,
-                                          p = detect,
-                                          start = start_indexes[1:nseason], # Start and end arguments allow you to provide ragged mtx data
-                                          end = end_indexes[1:nseason])
-
-
-  }
-
-  # Define Priors
-  for (i in 1:(nseason-1)){
-    persist[i] ~ dunif(0,1)
-  }
-
-  colonize ~ dunif(0,1)
-  init_occ ~ dunif(0,1)
-  detect ~ dunif(0,1)
-
-  # Derive posterior for year
-  psi[1] <-  init_occ
-  for (i in 2:nseason){
-    psi[i] <- psi[i-1]*(persist[i-1]) + (1-psi[i-1])*colonize
-  }
-  perc_change <- (psi[10] - psi[1])/psi[1]
-})
 
 # function to initialize a model object for a given sample size
 init_model <- function(n, year, visit, model_obj){
@@ -244,6 +218,8 @@ init_model <- function(n, year, visit, model_obj){
   nsite <- n
   nseason <- year
   nrep <- visit
+  
+  print(c(nsite, "before model fit"))
 
   # make observed occurrence an array with site x year(season) x visit(rep)
   obs_occ_init <- array(sample(c(0,1), (nsite * nseason * nrep), replace = TRUE), c(nsite, nseason, nrep))
@@ -251,7 +227,7 @@ init_model <- function(n, year, visit, model_obj){
   # Build the model
   mod <- nimbleModel(
     code = model_obj,
-    constants = list(nsite = nsite, nrep = nrep, nseason = nseason,
+    constants = list(nsite = n, nrep = nrep, nseason = nseason,
                      start_indexes = rep(1, nseason),
                      end_indexes = rep(nrep, nseason)
     ),
@@ -264,6 +240,8 @@ init_model <- function(n, year, visit, model_obj){
     )
   )
 
+  print(c(nsite, "after model fit"))
+  
   # shouldn't NA, infinite, or positive (that's a dist issue)
   #Non-NA means we're fully initialized
   if (!is.finite(mod$calculate())){
@@ -278,16 +256,58 @@ init_model <- function(n, year, visit, model_obj){
   # Compile
   complist <- compileNimble(mod, mcmc)
 
+  print(c(nsite, "after compile"))
   return(complist)
 }
 
 
 # let's start at the bottom
 # sampled data needs to be all sampled data for that EMU and sample size (multiple scenarios)
-fit_model_reps <- function(emu, total_n, n_year, n_visit, data, model_code){
-
+#fit_model_reps <- function(emu, total_n, n_year, n_visit, data){
+fit_model_reps <- function(df){  
+  browser()
+  print(emu)
+  # Model code for single EMU year estimate
+  dynoccmod_code <- nimbleCode({
+    
+    # The whole likelihood for the dynamic occupancy model is contained inside
+    # dDynOcc_sss. The suffix _sss indicates that persistence, colonization, and
+    # detection are provided as scalars (one value for the whole site's
+    # detection history). Other variants exist with suffixes like _svm (which
+    # would mean that persistence is (s)calar, colonization is a (v)ector
+    # varying with season, and detection is a (m)atrix varying with season and
+    # with replicate)
+    
+    for (i in 1:nsite) {
+      y[i, 1:nseason, 1:nrep] ~ dDynOcc_vss(probPersist = persist[1:(nseason-1)],
+                                            probColonize = colonize,
+                                            init = init_occ,
+                                            p = detect,
+                                            start = start_indexes[1:nseason], # Start and end arguments allow you to provide ragged mtx data
+                                            end = end_indexes[1:nseason])
+      
+      
+    }
+    
+    # Define Priors
+    for (i in 1:(nseason-1)){
+      persist[i] ~ dunif(0,1)
+    }
+    
+    colonize ~ dunif(0,1)
+    init_occ ~ dunif(0,1)
+    detect ~ dunif(0,1)
+    
+    # Derive posterior for year
+    psi[1] <-  init_occ
+    for (i in 2:nseason){
+      psi[i] <- psi[i-1]*(persist[i-1]) + (1-psi[i-1])*colonize
+    }
+    perc_change <- (psi[10] - psi[1])/psi[1]
+  })
+  
   # create template model that can be updated with data
-  compile_model <- init_model(n = total_n, year = n_year, visit = n_visit, model_obj = model_code)
+  compile_model <- init_model(n = total_n, year = n_year, visit = n_visit, model_obj = dynoccmod_code)
 
   # create dataframe with all scenarios and reps, maybe from sampled data?
   map_df <- data %>%
@@ -334,8 +354,17 @@ fit_model_reps <- function(emu, total_n, n_year, n_visit, data, model_code){
 
 }
 
-pmap(sim_map_data, fit_model_reps, n_year = 10, n_visit = 2, model_code = dynoccmod_code)
+plan(multisession, workers = 5)
+furrr::future_pmap(sim_map_data_test, fit_model_reps, n_year = 10, n_visit = 2,
+                   .options=furrr_options(seed = TRUE, packages = c("nimble"))
+                   )
 
+
+## Trying lapply
+
+# test <- split(sim_map_data_test, 1:nrow(sim_map_data_test)) 
+# 
+# lapply(test, fit_model_reps)
 
 ###########################################################
 ################## Processing runs ########################
