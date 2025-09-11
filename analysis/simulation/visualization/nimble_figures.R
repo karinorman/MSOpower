@@ -28,7 +28,7 @@ sim_scenarios_table <- data.frame(
   mutate(simulation_scenario = row_number()) %>%
   select(simulation_scenario,everything())
 
-bre_power <- nimble_power_check %>%
+nimble_emu_plt <- nimble_power_check %>%
 left_join(sim_scenarios_table, by = c("phi", "p", "psi" = "psi_high")) %>%
   mutate(sim_type = paste0(simulation_scenario, ":  \u03A8 = ", psi, ", \u03C6 = ", phi, ", p = ", p)) %>%
   mutate(unit = case_when(
