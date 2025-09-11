@@ -128,7 +128,6 @@ sim_map_names <- sim_scenarios_emu %>%
   left_join(sim_scenarios_emu %>%
               select(sim_id, psi, phi, p, high_n, low_n, total_n, low_hex_count = hex_count) %>%
               filter(psi == 0.03) %>%
-              separate(sim_id, c("emu"), sep = "_", remove = FALSE) %>%
               select(-psi) %>%
               rename(low_name = sim_id)) %>%
   mutate(low_psi = 0.03,
@@ -143,16 +142,16 @@ source(here::here("R/sim_dataset.R"))
 
 # function to initialize a model object for a given sample size
 init_model <- function(n, year, visit, model_obj){
-  
+
   nsite <- n
   nseason <- year
   nrep <- visit
-  
+
   print(c(nsite, "before model fit"))
-  
+
   # make observed occurrence an array with site x year(season) x visit(rep)
   obs_occ_init <- array(sample(c(0,1), (nsite * nseason * nrep), replace = TRUE), c(nsite, nseason, nrep))
-  
+
   # Build the model
   mod <- nimble::nimbleModel(
     code = model_obj,
@@ -168,23 +167,23 @@ init_model <- function(n, year, visit, model_obj){
       persist = rep(0.5, (nseason-1))
     )
   )
-  
+
   print(c(nsite, "after model fit"))
-  
+
   # shouldn't NA, infinite, or positive (that's a dist issue)
   #Non-NA means we're fully initialized
   if (!is.finite(mod$calculate())){
     stop("Model did not initialize properly.")
   }
-  
+
   # Build an MCMC
   conf <- nimble::configureMCMC(mod)
   conf$addMonitors(c("psi", "perc_change"))
   mcmc <- nimble::buildMCMC(conf)
-  
+
   # Compile
   complist <- nimble::compileNimble(mod, mcmc)
-  
+
   print(c(nsite, "after compile"))
   return(complist)
 }
@@ -198,13 +197,13 @@ sample_data <- function(data, sample_size){
 
 # let's start at the bottom
 # sampled data needs to be all sampled data for that EMU and sample size (multiple scenarios)
-fit_model_reps <- function(sample_size, reps, n_year, n_visit){ 
+fit_model_reps <- function(sample_size, reps, n_year, n_visit){
 
   #### Set up nimble model for that sample size ####
-  
+
   # Model code for single EMU year estimate
   dynoccmod_code <- nimble::nimbleCode({
-    
+
     # The whole likelihood for the dynamic occupancy model is contained inside
     # dDynOcc_sss. The suffix _sss indicates that persistence, colonization, and
     # detection are provided as scalars (one value for the whole site's
@@ -212,7 +211,7 @@ fit_model_reps <- function(sample_size, reps, n_year, n_visit){
     # would mean that persistence is (s)calar, colonization is a (v)ector
     # varying with season, and detection is a (m)atrix varying with season and
     # with replicate)
-    
+
     for (i in 1:nsite) {
       y[i, 1:nseason, 1:nrep] ~ dDynOcc_vss(probPersist = persist[1:(nseason-1)],
                                             probColonize = colonize,
@@ -220,19 +219,19 @@ fit_model_reps <- function(sample_size, reps, n_year, n_visit){
                                             p = detect,
                                             start = start_indexes[1:nseason], # Start and end arguments allow you to provide ragged mtx data
                                             end = end_indexes[1:nseason])
-      
-      
+
+
     }
-    
+
     # Define Priors
     for (i in 1:(nseason-1)){
       persist[i] ~ dunif(0,1)
     }
-    
+
     colonize ~ dunif(0,1)
     init_occ ~ dunif(0,1)
     detect ~ dunif(0,1)
-    
+
     # Derive posterior for year
     psi[1] <-  init_occ
     for (i in 2:nseason){
@@ -240,65 +239,65 @@ fit_model_reps <- function(sample_size, reps, n_year, n_visit){
     }
     perc_change <- (psi[10] - psi[1])/psi[1]
   })
-  
+
   # create template model that can be updated with data
   compile_model <- init_model(n = sample_size, year = n_year, visit = n_visit, model_obj = dynoccmod_code)
-  
+
   #print(colnames(sim_map_names))
   # get dataframe of scenarios
   map_df <- sim_map_names %>%
     dplyr::filter(total_n == sample_size)
-  
-  
+
+
   ## Map across scenarios for EMU and reps (multiple scenarios with the same sample size for each EMU)
-  purrr::pmap(map_df, function(high_name, psi, phi, sd_phi, sd_gamma, p, high_hex_count, perc_red, 
+  purrr::pmap(map_df, function(high_name, psi, phi, sd_phi, sd_gamma, p, high_hex_count, perc_red,
                                high_n, low_n, total_n, low_name, low_hex_count, low_psi, seed, year, visit){
-    
+
     set.seed(seed)
-    
+
     for (i in 1:reps){
-      
+
       #simulate high occupancy
-      high_data <- sim_dataset(psi = psi, phi = phi, sd_phi = sd_phi, sd_gamma = sd_gamma, p = p, 
+      high_data <- sim_dataset(psi = psi, phi = phi, sd_phi = sd_phi, sd_gamma = sd_gamma, p = p,
                                n_sites = high_hex_count, perc_red = perc_red, nyear = year, n_vis = visit)
       #simulate low occupancy
-      low_data <- sim_dataset(psi = low_psi, phi = phi, sd_phi = sd_phi, sd_gamma = sd_gamma, p = p, 
+      low_data <- sim_dataset(psi = low_psi, phi = phi, sd_phi = sd_phi, sd_gamma = sd_gamma, p = p,
                               n_sites = low_hex_count, perc_red = perc_red, nyear = year, n_vis = visit)
       # save data out
-      
+
       #sample observed occupancy as model input
       sample_occ <- dplyr::bind_rows(sample_data(high_data$obs_occ, high_n),
                               sample_data(low_data$obs_occ, low_n)) %>%
         dplyr::arrange(visit)
-      
+
       occ_array <- sample_occ %>%
         dplyr::select(-site_id) %>%
         split(sample_occ$visit) %>%
         purrr::map( ~ .x |> dplyr::select(-visit) |> as.matrix()) %>%
         simplify2array()
-      
-      
-      # double check that data dimensions are same as dummy data 
 
-      
+
+      # double check that data dimensions are same as dummy data
+
+
       # list of new initialized variables
       new_inits <-  list(
         colonize = 0.5,
         init_occ = 0.5,
         detect = 0.5,
         persist = rep(0.5, (year-1)))
-      
+
       # update model with data
       compile_model$mod$y <- occ_array
       #compile_model$setData("y")
       fit <- nimble::runMCMC(compile_model$mcmc, niter = 1000, nchains = 2, nburnin = 500,
                              samplesAsCodaMCMC = TRUE,
                              inits = new_inits)
-      
+
       summary <- MCMCvis::MCMCsummary(fit, probs = c(0.025, 0.5, 0.95, 0.975)) |>
         dplyr::mutate(high_name = high_name, rep = i) |>
         tibble::rownames_to_column(var = "parameter")
-      
+
       readr::write_csv(summary, paste0(here::here("data/nimble/emu_summary/"), "/", high_name, "_", i, "_summary.csv"))
       saveRDS(fit, paste0(here::here("data/nimble/emu_posterior/"), "/", high_name, "_", i, "_posterior.rds"))
     }
@@ -306,7 +305,7 @@ fit_model_reps <- function(sample_size, reps, n_year, n_visit){
 }
 
 ncores <- 14
-cl <- makeCluster(ncores)
+cl <- makeCluster(ncores, type = "PSOCK")
 clusterExport(cl, c('init_model', 'sim_map_names', 'sim_dataset', 'sample_data'))
 capture <- clusterEvalQ(cl, {
   library(nimbleEcology)
@@ -314,10 +313,10 @@ capture <- clusterEvalQ(cl, {
 })
 
 sample_sizes <- unique(sim_map_names$total_n)
-results <- parLapply(cl, sample_sizes, fit_model_reps, 
+results <- parLapply(cl, sample_sizes, fit_model_reps,
        reps = 100, n_year = 10, n_visit = 2)
 
-lapply(sample_sizes, fit_model_reps, 
+lapply(sample_sizes, fit_model_reps,
        reps = 100, n_year = 10, n_visit = 2)
 
 ###########################################################
