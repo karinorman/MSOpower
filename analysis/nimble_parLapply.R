@@ -259,11 +259,17 @@ fit_model_reps <- function(sample_size, reps, n_year, n_visit){
 
       #simulate high occupancy
       high_data <- sim_dataset(psi = psi, phi = phi, sd_phi = sd_phi, sd_gamma = sd_gamma, p = p,
-                               n_sites = high_hex_count, perc_red = perc_red, nyear = year, n_vis = visit)
+                               n_sites = high_hex_count, perc_red = perc_red, nyear = year, n_vis = visit) %>%
+      append(c("sim_id" = high_name, "rep" = i))
+
       #simulate low occupancy
       low_data <- sim_dataset(psi = low_psi, phi = phi, sd_phi = sd_phi, sd_gamma = sd_gamma, p = p,
-                              n_sites = low_hex_count, perc_red = perc_red, nyear = year, n_vis = visit)
+                              n_sites = low_hex_count, perc_red = perc_red, nyear = year, n_vis = visit) %>%
+        append(c("sim_id" = low_name, "rep" = i))
+
       # save data out
+      saveRDS(high_data, paste0(here::here("data/nimble/emu_simulated_data/"), "/", high_name, "_", i, "_simdata.rds"))
+      saveRDS(low_data, paste0(here::here("data/nimble/emu_simulated_data/"), "/", low_name, "_", i, "_simdata.rds"))
 
       #sample observed occupancy as model input
       sample_occ <- dplyr::bind_rows(sample_data(high_data$obs_occ, high_n),
@@ -275,10 +281,6 @@ fit_model_reps <- function(sample_size, reps, n_year, n_visit){
         split(sample_occ$visit) %>%
         purrr::map( ~ .x |> dplyr::select(-visit) |> as.matrix()) %>%
         simplify2array()
-
-
-      # double check that data dimensions are same as dummy data
-
 
       # list of new initialized variables
       new_inits <-  list(
@@ -310,6 +312,8 @@ clusterExport(cl, c('init_model', 'sim_map_names', 'sim_dataset', 'sample_data')
 capture <- clusterEvalQ(cl, {
   library(nimbleEcology)
   library(magrittr)
+  library(purrr)
+  library(dplyr)
 })
 
 sample_sizes <- unique(sim_map_names$total_n)
