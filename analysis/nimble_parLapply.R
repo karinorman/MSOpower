@@ -113,9 +113,11 @@ sim_scenarios_emu <- sim_scenarios_emu %>%
   left_join(emu_sample_sizes %>% select(sim_num, emu, n_samp)) %>%
   group_by(emu) %>%
   mutate(sim_num = row_number()) %>%
-  unite("sim_id", emu, sim_num) %>%
+  unite("sim_id", emu, sim_num, remove = FALSE) %>%
+  #unite("sim_id", emu, sim_num) %>%
   rename(high_n = n_samp) %>%
-  mutate(low_n = round(high_n*(1/3)), total_n = (high_n + low_n))
+  mutate(low_n = round(high_n*(1/3)), total_n = (high_n + low_n)) %>% 
+  ungroup()
 
 # generate master scenario table with random seeds
 
@@ -126,12 +128,16 @@ sim_map_names <- sim_scenarios_emu %>%
   filter(psi != 0.03) %>%
   rename(high_name = sim_id) %>%
   left_join(sim_scenarios_emu %>%
-              select(sim_id, psi, phi, p, high_n, low_n, total_n, low_hex_count = hex_count) %>%
+              select(sim_id, psi, phi, p, high_n, low_n, total_n, low_hex_count = hex_count, emu) %>%
               filter(psi == 0.03) %>%
               select(-psi) %>%
               rename(low_name = sim_id)) %>%
   mutate(low_psi = 0.03,
-         seed = 1 + floor(runif(n()) * 100000))
+         seed = 1 + floor(runif(n()) * 100000)) %>%
+  group_by(emu, total_n) %>%
+  mutate(chunk_num = cur_group_id()) %>%
+  ungroup() %>%
+  select(-emu)
 
 
 ##############################################
@@ -197,8 +203,15 @@ sample_data <- function(data, sample_size){
 
 # let's start at the bottom
 # sampled data needs to be all sampled data for that EMU and sample size (multiple scenarios)
-fit_model_reps <- function(sample_size, reps, n_year, n_visit){
+fit_model_reps <- function(chunk, reps, n_year, n_visit){
 
+  # get dataframe of scenarios
+  map_df <- sim_map_names %>%
+    dplyr::filter(chunk_num == chunk) %>%
+    select(-chunk_num)
+  
+  sample_size <- unique(map_df$total_n)
+  
   #### Set up nimble model for that sample size ####
 
   # Model code for single EMU year estimate
@@ -242,12 +255,6 @@ fit_model_reps <- function(sample_size, reps, n_year, n_visit){
 
   # create template model that can be updated with data
   compile_model <- init_model(n = sample_size, year = n_year, visit = n_visit, model_obj = dynoccmod_code)
-
-  #print(colnames(sim_map_names))
-  # get dataframe of scenarios
-  map_df <- sim_map_names %>%
-    dplyr::filter(total_n == sample_size)
-
 
   ## Map across scenarios for EMU and reps (multiple scenarios with the same sample size for each EMU)
   purrr::pmap(map_df, function(high_name, psi, phi, sd_phi, sd_gamma, p, high_hex_count, perc_red,
@@ -306,7 +313,12 @@ fit_model_reps <- function(sample_size, reps, n_year, n_visit){
   }, year = n_year, visit = n_visit)
 }
 
-ncores <- 14
+# initialize save out directories
+dir.create(here::here("data/nimble/emu_summary"), recursive = TRUE)
+dir.create(here::here("data/nimble/emu_posterior"))
+dir.create(here::here("data/nimble/emu_simulated_data"))
+
+ncores <- 50
 cl <- makeCluster(ncores, type = "PSOCK")
 clusterExport(cl, c('init_model', 'sim_map_names', 'sim_dataset', 'sample_data'))
 capture <- clusterEvalQ(cl, {
@@ -316,12 +328,13 @@ capture <- clusterEvalQ(cl, {
   library(dplyr)
 })
 
-sample_sizes <- unique(sim_map_names$total_n)
-results <- parLapply(cl, sample_sizes, fit_model_reps,
+
+chunk_list <- unique(sim_map_names$chunk_num)
+results <- parLapply(cl, chunk_list, fit_model_reps,
        reps = 100, n_year = 10, n_visit = 2)
 
-lapply(sample_sizes, fit_model_reps,
-       reps = 100, n_year = 10, n_visit = 2)
+# lapply(chunk_list, fit_model_reps,
+#        reps = 100, n_year = 10, n_visit = 2)
 
 ###########################################################
 ################## Processing runs ########################
