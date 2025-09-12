@@ -353,7 +353,9 @@ results <- parLapply(cl, chunk_list, fit_model_reps,
 # sim_map_metadata <- read.csv(here::here("data/sim_map_metadata.csv"))
 
 # read in estimates
-nimble_output <- purrr::map_dfr(list.files(here::here("data/nimble/emu_summary/"), full.names = TRUE), ~read.csv(.x))
+nimble_output <- purrr::map_dfr(list.files(here::here("data/nimble/emu_summary/"), full.names = TRUE), ~read.csv(.x) %>% 
+                                  filter(parameter == "perc_change") %>%
+                                  select(mean, ci025 = X2.5., ci97.5 = X97.5., high_name, rep))
 
 # get dataframe of sims and reps we've already done
 sim_data_files <- data.frame(files = list.files(here::here("data/nimble/emu_simulated_data/")), 
@@ -394,8 +396,6 @@ true_occ <- pmap_dfr(sim_data_files %>% select(high_name, rep, low_name), functi
                                 
 # perc_change power checks
 perc_change_check <- nimble_output %>%
-  filter(parameter == "perc_change") %>%
-  select(mean, ci025 = X2.5., ci97.5 = X97.5., high_name, rep) %>%
   left_join(true_occ %>% select(high_name, true_perc_change, rep) %>%
               mutate(rep = as.integer(rep))) %>%
   # pivot_longer(starts_with("ci"), names_to = "ci_type", values_to = "ci_value") %>%
