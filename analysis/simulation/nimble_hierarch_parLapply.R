@@ -128,13 +128,11 @@ sim_map <- sim_scenarios_emu %>%
 source(here::here("R/sim_dataset.R"))
 
 # function to initialize a model object for a given sample size
-init_model <- function(n, year, visit, model_obj){
+init_model <- function(n, year, visit, emu_vec, model_obj){
 
   nsite <- n
   nseason <- year
   nrep <- visit
-
-  print(c(nsite, "before model fit"))
 
   # make observed occurrence an array with site x year(season) x visit(rep)
   obs_occ_init <- array(sample(c(0,1), (nsite * nseason * nrep), replace = TRUE), c(nsite, nseason, nrep))
@@ -144,18 +142,19 @@ init_model <- function(n, year, visit, model_obj){
     code = model_obj,
     constants = list(nsite = n, nrep = nrep, nseason = nseason,
                      start_indexes = rep(1, nseason),
-                     end_indexes = rep(nrep, nseason)
+                     end_indexes = rep(nrep, nseason),
+                     EMU = sample(emu_vec, nsite), num_EMU = n_distinct(emu_vec)
     ),
     data = list(y = obs_occ_init),
     inits = list(
       colonize = 0.5,
       init_occ = 0.5,
       detect = 0.5,
-      persist = rep(0.5, (nseason-1))
+      persist_int = rep(0.5, (nseason-1)),
+      ranef = rep(0, n_distinct(emu_vec)),
+      sigma_ranef = 1
     )
   )
-
-  print(c(nsite, "after model fit"))
 
   # shouldn't NA, infinite, or positive (that's a dist issue)
   #Non-NA means we're fully initialized
@@ -165,13 +164,12 @@ init_model <- function(n, year, visit, model_obj){
 
   # Build an MCMC
   conf <- nimble::configureMCMC(mod)
-  conf$addMonitors(c("psi", "perc_change"))
+  conf$addMonitors(c("psi", "perc_change", "ranef"))
   mcmc <- nimble::buildMCMC(conf)
 
   # Compile
   complist <- nimble::compileNimble(mod, mcmc)
 
-  print(c(nsite, "after compile"))
   return(complist)
 }
 
@@ -209,7 +207,7 @@ fit_model_reps <- function(chunk, reps, n_year, n_visit){
     # with replicate)
 
     for (i in 1:nsite) {
-      y[i, 1:nseason, 1:nrep] ~ dDynOcc_vss(probPersist = persist[1:(nseason-1)],
+      y[i, 1:nseason, 1:nrep] ~ dDynOcc_vss(probPersist = persist[i, 1:(nseason-1)],
                                             probColonize = colonize,
                                             init = init_occ,
                                             p = detect,
@@ -221,28 +219,39 @@ fit_model_reps <- function(chunk, reps, n_year, n_visit){
 
     # Define Priors
     for (i in 1:(nseason-1)){
-      persist[i] ~ dunif(0,1)
+      persist_int[i] ~ dunif(0,1)
+      for (j in 1:nsite){
+        logit(persist[j, i]) <- logit(persist_int[i]) + ranef[EMU[j]]
+      }
+    }
+
+    for (r in 1:num_EMU) {
+      # do sd = so life isn't ruined (might think its precision)
+      ranef[r] ~ dnorm(0, sd = sigma_ranef)
     }
 
     colonize ~ dunif(0,1)
     init_occ ~ dunif(0,1)
     detect ~ dunif(0,1)
+    sigma_ranef ~ dunif(0, 10)
 
     # Derive posterior for year
     psi[1] <-  init_occ
     for (i in 2:nseason){
-      psi[i] <- psi[i-1]*(persist[i-1]) + (1-psi[i-1])*colonize
+      # gives the estimate for year based on mean persistance (not a level of random effect)
+      psi[i] <- psi[i-1]*(persist_int[i-1]) + (1-psi[i-1])*colonize
     }
     perc_change <- (psi[10] - psi[1])/psi[1]
   })
 
   # create template model that can be updated with data
-  compile_model <- init_model(n = sample_size, year = n_year, visit = n_visit, model_obj = dynoccmod_code)
+  compile_model <- init_model(n = sample_size, year = n_year, visit = n_visit, emu_vec = 1:n_distinct(map_df$emu), model_obj = dynoccmod_code)
 
+  set.seed(unique(map_df$seed))
   # for reach replicate, generate high and low data, and fit model
   for (i in 1:reps){
     # get high data
-    high_data <- purrr::pmap(map_df %>% select(-c(high_n, low_n)), function(high_name, emu, psi, phi, sd_phi, sd_gamma, p, high_hex_count, perc_red, total_samp, low_name,
+    high_data <- purrr::pmap_dfr(map_df %>% select(-c(high_n, low_n)), function(high_name, emu, psi, phi, sd_phi, sd_gamma, p, high_hex_count, perc_red, total_samp, low_name,
                                  low_hex_count, low_psi, seed, year, visit){
 
       high_data <- sim_dataset(psi = psi, phi = phi, sd_phi = sd_phi, sd_gamma = sd_gamma, p = p,
@@ -251,11 +260,13 @@ fit_model_reps <- function(chunk, reps, n_year, n_visit){
 
       saveRDS(high_data, paste0(here::here("data/nimble/hier_simulated_data/"), "/", high_name, "_", i, "_simdata.rds"))
 
-      return(high_data$obs_occ %>% mutate(emu = emu, landtype = "high"))
+      return(high_data$obs_occ %>% mutate(emu = emu, landtype = "high") %>%
+               # get unique site id across emu's
+               mutate(site_id = paste0(emu, site_id)))
     }, year = n_year, visit = n_visit)
 
     # get low data
-    low_data <- purrr::pmap(map_df %>% select(-c(high_n, low_n)), function(high_name, emu, psi, phi, sd_phi, sd_gamma, p, high_hex_count, perc_red, total_samp, low_name,
+    low_data <- purrr::pmap_dfr(map_df %>% select(-c(high_n, low_n)), function(high_name, emu, psi, phi, sd_phi, sd_gamma, p, high_hex_count, perc_red, total_samp, low_name,
                                  low_hex_count, low_psi, seed, year, visit){
 
       low_data <- sim_dataset(psi = low_psi, phi = phi, sd_phi = sd_phi, sd_gamma = sd_gamma, p = p,
@@ -264,7 +275,9 @@ fit_model_reps <- function(chunk, reps, n_year, n_visit){
 
       saveRDS(low_data, paste0(here::here("data/nimble/emu_simulated_data/"), "/", low_name, "_", i, "_simdata.rds"))
 
-      return(low_data$obs_occ %>% mutate(emu = emu, landtype = "low"))
+      return(low_data$obs_occ %>% mutate(emu = emu, landtype = "low") %>%
+               # get unique site id across emu's
+               mutate(site_id = paste0(emu, site_id)))
     }, year = n_year, visit = n_visit)
 
     # sample observed occupancy
@@ -273,17 +286,24 @@ fit_model_reps <- function(chunk, reps, n_year, n_visit){
       dplyr::arrange(visit)
 
     occ_array <- occ_data %>%
-      dplyr::select(-site_id) %>%
+      dplyr::select(-c(site_id, emu, landtype)) %>%
       split(occ_data$visit) %>%
       purrr::map( ~ .x |> dplyr::select(-visit) |> as.matrix()) %>%
       simplify2array()
+
+    emu_var <-  occ_data %>%
+      filter(visit == 1) %>%
+      mutate(emu_num = as.numeric(as.factor(emu))) %>%
+      pull(emu_num)
 
     # list of new initialized variables
     new_inits <-  list(
       colonize = 0.5,
       init_occ = 0.5,
       detect = 0.5,
-      persist = rep(0.5, (year-1)))
+      persist_int = rep(0.5, (n_year-1)),
+      ranef = rep(0, n_distinct(emu_vec)),
+      sigma_ranef = 1)
 
     # update model with data
     compile_model$mod$y <- occ_array
