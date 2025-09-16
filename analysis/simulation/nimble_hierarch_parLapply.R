@@ -143,7 +143,7 @@ init_model <- function(n, year, visit, emu_vec, model_obj){
     constants = list(nsite = n, nrep = nrep, nseason = nseason,
                      start_indexes = rep(1, nseason),
                      end_indexes = rep(nrep, nseason),
-                     EMU = sample(emu_vec, nsite), num_EMU = n_distinct(emu_vec)
+                     num_EMU = n_distinct(emu_vec)
     ),
     data = list(y = obs_occ_init),
     inits = list(
@@ -152,7 +152,8 @@ init_model <- function(n, year, visit, emu_vec, model_obj){
       detect = 0.5,
       persist_int = rep(0.5, (nseason-1)),
       ranef = rep(0, n_distinct(emu_vec)),
-      sigma_ranef = 1
+      sigma_ranef = 1,
+      EMU = sample(emu_vec, nsite, replace = TRUE)
     )
   )
 
@@ -283,7 +284,8 @@ fit_model_reps <- function(chunk, reps, n_year, n_visit){
     # sample observed occupancy
     occ_data <- bind_rows(sample_data(high_data, high_n),
                           sample_data(low_data, low_n)) %>%
-      dplyr::arrange(visit)
+      # enforce that visits are ordered as that emu vec is same across visits
+      dplyr::arrange(visit, emu)
 
     occ_array <- occ_data %>%
       dplyr::select(-c(site_id, emu, landtype)) %>%
@@ -302,8 +304,9 @@ fit_model_reps <- function(chunk, reps, n_year, n_visit){
       init_occ = 0.5,
       detect = 0.5,
       persist_int = rep(0.5, (n_year-1)),
-      ranef = rep(0, n_distinct(emu_vec)),
-      sigma_ranef = 1)
+      ranef = rep(0, n_distinct(emu_var)),
+      sigma_ranef = 1,
+      EMU = emu_var)
 
     # update model with data
     compile_model$mod$y <- occ_array
@@ -313,11 +316,11 @@ fit_model_reps <- function(chunk, reps, n_year, n_visit){
                            inits = new_inits)
 
     summary <- MCMCvis::MCMCsummary(fit, probs = c(0.025, 0.5, 0.95, 0.975)) |>
-      dplyr::mutate(high_name = high_name, rep = i) |>
+      dplyr::mutate(scenario_id = chunk, rep = i) |>
       tibble::rownames_to_column(var = "parameter")
 
-    readr::write_csv(summary, paste0(here::here("data/nimble/emu_summary/"), "/", high_name, "_", i, "_summary.csv"))
-    saveRDS(fit, paste0(here::here("data/nimble/emu_posterior/"), "/", high_name, "_", i, "_posterior.rds"))
+    readr::write_csv(summary, paste0(here::here("data/nimble/emu_summary/"), "/", chunk, "_", i, "_summary.csv"))
+    saveRDS(fit, paste0(here::here("data/nimble/emu_posterior/"), "/", chunk, "_", i, "_posterior.rds"))
   }
 }
 

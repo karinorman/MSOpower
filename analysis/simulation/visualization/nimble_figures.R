@@ -62,7 +62,7 @@ left_join(sim_scenarios_table, by = c("phi", "p", "psi" = "psi_high")) %>%
   ylab("Percent Success") +
   xlab("Sample Size")
 
-ggsave(here::here("figures/emu_power_nimble.png"), nimble_emu_plt, height = 12, width = 10)
+ggsave(here::here("figures/emu_power_nimble.png"), nimble_emu_plt, height = 12, width = 15)
 
 
 ### Let's get the same thing with the spoccupancy approach
