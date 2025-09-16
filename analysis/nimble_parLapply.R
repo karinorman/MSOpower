@@ -208,7 +208,7 @@ fit_model_reps <- function(chunk, reps, n_year, n_visit, data){
 
   # get dataframe of scenarios
   map_df <- data %>%
-    dplyr::filter(high_name == chunk) %>%
+    dplyr::filter(chunk_num == chunk) %>%
     select(-chunk_num)
   
   sample_size <- unique(map_df$total_n)
@@ -335,31 +335,6 @@ chunk_list <- unique(sim_map_names$chunk_num)
 results <- parLapply(cl, chunk_list, fit_model_reps,
        reps = simn, n_year = 10, n_visit = 2, data = sim_map_names)
 
-# for when the whole thing doesn't run in one go
-missing_runs <- perc_change_check %>% 
-  filter(rep_count == 100) %>%
-  select(-c(sim_num, ci_two_tail, rep_count, line_id, emu)) %>%
-  mutate(finished = TRUE) %>%
-  right_join(sim_map_names) %>%
-  filter(is.na(finished)) %>%
-  select(-finished)
-
-ncores <- 50
-cl <- makeCluster(ncores, type = "PSOCK")
-clusterExport(cl, c('init_model', 'missing_runs', 'sim_dataset', 'sample_data'))
-capture <- clusterEvalQ(cl, {
-  library(nimbleEcology)
-  library(magrittr)
-  library(purrr)
-  library(dplyr)
-})
-
-simn = 100
-
-chunk_list <- unique(missing_runs$high_name)
-results <- parLapply(cl, chunk_list, fit_model_reps,
-                     reps = simn, n_year = 10, n_visit = 2,
-                     data = missing_runs)
 
 # lapply(chunk_list, fit_model_reps,
 #        reps = 100, n_year = 10, n_visit = 2)
@@ -438,3 +413,32 @@ perc_change_check <- nimble_output %>%
 
 readr::write_csv(perc_change_check, here::here("data/nimble_power_check.csv"))
 
+
+# # for when the whole thing doesn't run in one go
+# missing_runs <- perc_change_check %>% 
+#   filter(rep_count == 100) %>%
+#   select(-c(sim_num, ci_two_tail, rep_count, line_id, emu)) %>%
+#   mutate(finished = TRUE) %>%
+#   right_join(sim_map_names) %>%
+#   filter(is.na(finished)) %>%
+#   select(-finished)
+# 
+# ncores <- 50
+# cl <- makeCluster(ncores, type = "PSOCK")
+# clusterExport(cl, c('init_model', 'missing_runs', 'sim_dataset', 'sample_data'))
+# capture <- clusterEvalQ(cl, {
+#   library(nimbleEcology)
+#   library(magrittr)
+#   library(purrr)
+#   library(dplyr)
+# })
+# 
+# simn = 100
+# 
+# # this uses the scenario as the level of parallelization, not chunk, so have to change
+# # the dataframe filter statement for it to work 
+# chunk_list <- unique(missing_runs$high_name)
+# results <- parLapply(cl, chunk_list, fit_model_reps,
+#                      reps = simn, n_year = 10, n_visit = 2,
+#                      data = missing_runs)
+# 

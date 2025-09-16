@@ -29,6 +29,7 @@ sim_scenarios_table <- data.frame(
   select(simulation_scenario,everything())
 
 nimble_emu_plt <- nimble_power_check %>%
+  filter(total_n < 1500) %>%
 left_join(sim_scenarios_table, by = c("phi", "p", "psi" = "psi_high")) %>%
   mutate(sim_type = paste0(simulation_scenario, ":  \u03A8 = ", psi, ", \u03C6 = ", phi, ", p = ", p)) %>%
   mutate(unit = case_when(
@@ -61,7 +62,7 @@ left_join(sim_scenarios_table, by = c("phi", "p", "psi" = "psi_high")) %>%
   ylab("Percent Success") +
   xlab("Sample Size")
 
-ggsave(here::here("figures/bre_power_nimble.png"), bre_power, height = 12, width = 10)
+ggsave(here::here("figures/emu_power_nimble.png"), nimble_emu_plt, height = 12, width = 10)
 
 
 ### Let's get the same thing with the spoccupancy approach
