@@ -6,7 +6,11 @@ library(dplyr)
 library(tidyr)
 library(purrr)
 library(furrr)
-library(spOccupancy)
+library(nimble)
+library(nimbleEcology)
+library(MCMCvis)
+library(parallel)
+
 
 # real world vegtypes for each emu
 emu_veg <- read.csv(here::here("data/EMU_veg_types.csv")) %>%
@@ -274,7 +278,7 @@ fit_model_reps <- function(chunk, reps, n_year, n_visit){
                               n_sites = low_hex_count, perc_red = perc_red, nyear = year, n_vis = visit) %>%
         append(c("sim_id" = low_name, "rep" = i))
 
-      saveRDS(low_data, paste0(here::here("data/nimble/emu_simulated_data/"), "/", low_name, "_", i, "_simdata.rds"))
+      saveRDS(low_data, paste0(here::here("data/nimble/hier_simulated_data/"), "/", low_name, "_", i, "_simdata.rds"))
 
       return(low_data$obs_occ %>% mutate(emu = emu, landtype = "low") %>%
                # get unique site id across emu's
@@ -319,8 +323,8 @@ fit_model_reps <- function(chunk, reps, n_year, n_visit){
       dplyr::mutate(scenario_id = chunk, rep = i) |>
       tibble::rownames_to_column(var = "parameter")
 
-    readr::write_csv(summary, paste0(here::here("data/nimble/emu_summary/"), "/", chunk, "_", i, "_summary.csv"))
-    saveRDS(fit, paste0(here::here("data/nimble/emu_posterior/"), "/", chunk, "_", i, "_posterior.rds"))
+    readr::write_csv(summary, paste0(here::here("data/nimble/hier_summary/"), "/", chunk, "_", i, "_summary.csv"))
+    saveRDS(fit, paste0(here::here("data/nimble/hier_posterior/"), "/", chunk, "_", i, "_posterior.rds"))
   }
 }
 
@@ -329,7 +333,7 @@ dir.create(here::here("data/nimble/hier_summary"), recursive = TRUE)
 dir.create(here::here("data/nimble/hier_posterior"))
 dir.create(here::here("data/nimble/hier_simulated_data"))
 
-ncores <- 50
+ncores <- 55
 cl <- makeCluster(ncores, type = "PSOCK")
 clusterExport(cl, c('init_model', 'sim_map', 'sim_dataset', 'sample_data'))
 capture <- clusterEvalQ(cl, {
@@ -347,3 +351,49 @@ results <- parLapply(cl, chunk_list, fit_model_reps,
 
 lapply(chunk_list, fit_model_reps,
        reps = 100, n_year = 10, n_visit = 2)
+
+###########################################################
+################## Processing runs ########################
+###########################################################
+
+# read in estimates
+nimble_output <- purrr::map_dfr(list.files(here::here("data/nimble/hier_summary/"), full.names = TRUE), ~read.csv(.x) %>% 
+                                  filter(parameter == "perc_change") %>%
+                                  select(mean, ci025 = X2.5., ci97.5 = X97.5., scenario_id, rep))
+
+# get dataframe of sims and reps we've already done
+high_data_files <- data.frame(files = list.files(here::here("data/nimble/hier_simulated_data/")), 
+                             file_paths = list.files(here::here("data/nimble/hier_simulated_data/"), full.names = TRUE)) %>%
+  separate(files, c("EMU", "sim_id", "rep")) %>%
+  unite("sim_id", c("EMU", "sim_id")) %>%
+  left_join(sim_map %>% select(scenario_id, high_name), by = c("sim_id" = "high_name")) %>%
+  #left_join(sim_map %>% select(scenario_id, low_name), by = c("sim_id" = "low_name")) %>%
+  filter(!is.na(scenario_id)) %>%
+  select(-file_paths)
+
+low_data_files <- data.frame(files = list.files(here::here("data/nimble/hier_simulated_data/")), 
+                              file_paths = list.files(here::here("data/nimble/hier_simulated_data/"), full.names = TRUE)) %>%
+  separate(files, c("EMU", "sim_id", "rep")) %>%
+  unite("sim_id", c("EMU", "sim_id")) %>%
+  #left_join(sim_map %>% select(scenario_id, high_name), by = c("sim_id" = "high_name")) %>%
+  left_join(sim_map %>% select(scenario_id, low_name), by = c("sim_id" = "low_name")) %>%
+  filter(!is.na(scenario_id)) %>%
+  select(-file_paths)
+
+# get true occupancy
+true_occ <- pmap_dfr(sim_data_files %>% select(high_name, rep, low_name), function(high_name, rep, low_name){
+  
+  readRDS(paste0(here::here("data/nimble/emu_simulated_data/"), "/", high_name, "_", rep, "_simdata.rds"))$true_occ %>%
+    bind_rows(readRDS(paste0(here::here("data/nimble/emu_simulated_data/"), "/", low_name, "_", rep, "_simdata.rds"))$true_occ) %>%
+    select(-site_id) %>%
+    ungroup() %>%
+    summarize(across(everything(), mean)) %>%
+    mutate(rep = rep, high_name = high_name, low_name = low_name)
+}) %>%
+  mutate(true_perc_change = (t10-t1)/t1) %>%
+  select(high_name, low_name, rep, true_perc_change)
+
+true_occ <- map(unique(sim_data_files$scenario_id), function(filter_scenario){
+  
+  scenario_df <- 
+})
