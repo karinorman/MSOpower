@@ -138,7 +138,10 @@ sim_map_names <- sim_scenarios_emu %>%
   group_by(emu, total_n) %>%
   mutate(chunk_num = cur_group_id()) %>%
   ungroup() %>%
-  select(-emu)
+  select(-emu) %>%
+  group_by(low_name, high_name) %>%
+  mutate(scenario_id = cur_group_id()) %>%
+  ungroup()
 
 
 ##############################################
@@ -153,8 +156,6 @@ init_model <- function(n, year, visit, model_obj){
   nsite <- n
   nseason <- year
   nrep <- visit
-
-  print(c(nsite, "before model fit"))
 
   # make observed occurrence an array with site x year(season) x visit(rep)
   obs_occ_init <- array(sample(c(0,1), (nsite * nseason * nrep), replace = TRUE), c(nsite, nseason, nrep))
@@ -175,8 +176,6 @@ init_model <- function(n, year, visit, model_obj){
     )
   )
 
-  print(c(nsite, "after model fit"))
-
   # shouldn't NA, infinite, or positive (that's a dist issue)
   #Non-NA means we're fully initialized
   if (!is.finite(mod$calculate())){
@@ -191,7 +190,6 @@ init_model <- function(n, year, visit, model_obj){
   # Compile
   complist <- nimble::compileNimble(mod, mcmc)
 
-  print(c(nsite, "after compile"))
   return(complist)
 }
 
@@ -259,7 +257,7 @@ fit_model_reps <- function(chunk, reps, n_year, n_visit, data){
 
   ## Map across scenarios for EMU and reps (multiple scenarios with the same sample size for each EMU)
   purrr::pmap(map_df, function(high_name, psi, phi, sd_phi, sd_gamma, p, high_hex_count, perc_red,
-                               high_n, low_n, total_n, low_name, low_hex_count, low_psi, seed, year, visit){
+                               high_n, low_n, total_n, low_name, low_hex_count, low_psi, scenario_id, seed, year, visit){
 
     set.seed(seed)
 
@@ -276,8 +274,8 @@ fit_model_reps <- function(chunk, reps, n_year, n_visit, data){
         append(c("sim_id" = low_name, "rep" = i))
 
       # save data out
-      saveRDS(high_data, paste0(here::here("data/nimble/emu_simulated_data/"), "/", high_name, "_", i, "_simdata.rds"))
-      saveRDS(low_data, paste0(here::here("data/nimble/emu_simulated_data/"), "/", low_name, "_", i, "_simdata.rds"))
+      saveRDS(high_data, paste0(here::here("data/nimble/emu_simulated_data/"), "/", high_name, "_", i, "_", scenario_id, "_simdata.rds"))
+      saveRDS(low_data, paste0(here::here("data/nimble/emu_simulated_data/"), "/", low_name, "_", i, "_", scenario_id, "_simdata.rds"))
 
       #sample observed occupancy as model input
       sample_occ <- dplyr::bind_rows(sample_data(high_data$obs_occ, high_n),
@@ -308,8 +306,8 @@ fit_model_reps <- function(chunk, reps, n_year, n_visit, data){
         dplyr::mutate(high_name = high_name, rep = i) |>
         tibble::rownames_to_column(var = "parameter")
 
-      readr::write_csv(summary, paste0(here::here("data/nimble/emu_summary/"), "/", high_name, "_", i, "_summary.csv"))
-      saveRDS(fit, paste0(here::here("data/nimble/emu_posterior/"), "/", high_name, "_", i, "_posterior.rds"))
+      readr::write_csv(summary, paste0(here::here("data/nimble/emu_summary/"), "/", high_name, "_", i, "_", scenario_id, "_summary.csv"))
+      saveRDS(fit, paste0(here::here("data/nimble/emu_posterior/"), "/", high_name, "_", i, "_", scenario_id, "_posterior.rds"))
     }
   }, year = n_year, visit = n_visit)
 }
@@ -319,7 +317,7 @@ dir.create(here::here("data/nimble/emu_summary"), recursive = TRUE)
 dir.create(here::here("data/nimble/emu_posterior"))
 dir.create(here::here("data/nimble/emu_simulated_data"))
 
-ncores <- 50
+ncores <- 55
 cl <- makeCluster(ncores, type = "PSOCK")
 clusterExport(cl, c('init_model', 'sim_map_names', 'sim_dataset', 'sample_data'))
 capture <- clusterEvalQ(cl, {
@@ -337,7 +335,7 @@ results <- parLapply(cl, chunk_list, fit_model_reps,
 
 
 # lapply(chunk_list, fit_model_reps,
-#        reps = 100, n_year = 10, n_visit = 2)
+#        reps = 100, n_year = 10, n_visit = 2, data = sim_map_names)
 
 ###########################################################
 ################## Processing runs ########################
