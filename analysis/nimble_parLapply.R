@@ -261,6 +261,7 @@ fit_model_reps <- function(chunk, reps, n_year, n_visit, data){
 
     set.seed(seed)
 
+    browser()
     for (i in 1:reps){
 
       #simulate high occupancy
@@ -334,8 +335,8 @@ results <- parLapply(cl, chunk_list, fit_model_reps,
        reps = simn, n_year = 10, n_visit = 2, data = sim_map_names)
 
 
-# lapply(chunk_list, fit_model_reps,
-#        reps = 100, n_year = 10, n_visit = 2, data = sim_map_names)
+lapply(chunk_list, fit_model_reps,
+       reps = 100, n_year = 10, n_visit = 2, data = sim_map_names)
 
 ###########################################################
 ################## Processing runs ########################
@@ -359,21 +360,22 @@ nimble_output <- purrr::map_dfr(list.files(here::here("data/nimble/emu_summary/"
 # get dataframe of sims and reps we've already done
 sim_data_files <- data.frame(files = list.files(here::here("data/nimble/emu_simulated_data/")), 
                          file_paths = list.files(here::here("data/nimble/emu_simulated_data/"), full.names = TRUE)) %>%
-                         separate(files, c("EMU", "sim_id", "rep")) %>%
+                         separate(files, c("EMU", "sim_id", "rep", "scenario_id")) %>%
     unite("high_name", c("EMU", "sim_id")) %>%
-  left_join(sim_map_names %>% select(high_name, low_name)) %>%
+  mutate(scenario_id = as.integer(scenario_id)) %>%
+  left_join(sim_map_names %>% select(high_name, low_name, scenario_id)) %>%
   filter(!is.na(low_name)) %>%
   select(-file_paths)
 
 # get true occupancy
-true_occ <- pmap_dfr(sim_data_files %>% select(high_name, rep, low_name), function(high_name, rep, low_name){
-    
-    readRDS(paste0(here::here("data/nimble/emu_simulated_data/"), "/", high_name, "_", rep, "_simdata.rds"))$true_occ %>%
-      bind_rows(readRDS(paste0(here::here("data/nimble/emu_simulated_data/"), "/", low_name, "_", rep, "_simdata.rds"))$true_occ) %>%
+true_occ <- pmap_dfr(sim_data_files %>% select(high_name, rep, low_name, scenario_id), function(high_name, rep, low_name, scenario_id){
+    browser()
+    readRDS(paste0(here::here("data/nimble/emu_simulated_data/"), "/", high_name, "_", rep, "_", scenario_id, "_simdata.rds"))$true_occ %>%
+      bind_rows(readRDS(paste0(here::here("data/nimble/emu_simulated_data/"), "/", low_name, "_", rep, "_", scenario_id, "_simdata.rds"))$true_occ) %>%
       select(-site_id) %>%
       ungroup() %>%
       summarize(across(everything(), mean)) %>%
-      mutate(rep = rep, high_name = high_name, low_name = low_name)
+      mutate(rep = rep, high_name = high_name, low_name = low_name, scenario_id = scenario_id)
 }) %>%
   mutate(true_perc_change = (t10-t1)/t1) %>%
   select(high_name, low_name, rep, true_perc_change)
