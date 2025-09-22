@@ -94,7 +94,7 @@ sim_scenarios_emu <- bind_rows(sim_scenarios %>% mutate(emu = "BRE"),
 sample_size_df <- emu_ratio %>%
   filter(occupancy == "high") %>%
   select(emu, hex_count) %>%
-  mutate(log_max_samp = ifelse(hex_count > 2000, log(2000), log(hex_count))) %>%
+  mutate(log_max_samp = ifelse(hex_count > 1480, log(1480), log(hex_count))) %>%
   rowwise() %>%
   mutate(log_samp = list(c(seq(2.3, log_max_samp, by = 0.5), log_max_samp))) %>%
   unnest(log_samp) %>%
@@ -143,7 +143,7 @@ sim_map_names <- sim_scenarios_emu %>%
   mutate(scenario_id = cur_group_id()) %>%
   ungroup()
 
-
+usethis::use_data(sim_map_names)
 ##############################################
 ########### Model and Power check ############
 ##############################################
@@ -318,7 +318,7 @@ dir.create(here::here("data/nimble/emu_summary"), recursive = TRUE)
 dir.create(here::here("data/nimble/emu_posterior"))
 dir.create(here::here("data/nimble/emu_simulated_data"))
 
-ncores <- 55
+ncores <- 52
 cl <- makeCluster(ncores, type = "PSOCK")
 clusterExport(cl, c('init_model', 'sim_map_names', 'sim_dataset', 'sample_data'))
 capture <- clusterEvalQ(cl, {
@@ -328,7 +328,7 @@ capture <- clusterEvalQ(cl, {
   library(dplyr)
 })
 
-simn = 100
+simn = 200
 
 chunk_list <- unique(sim_map_names$chunk_num)
 results <- parLapply(cl, chunk_list, fit_model_reps,
@@ -369,7 +369,7 @@ sim_data_files <- data.frame(files = list.files(here::here("data/nimble/emu_simu
 
 # get true occupancy
 true_occ <- pmap_dfr(sim_data_files %>% select(high_name, rep, low_name, scenario_id), function(high_name, rep, low_name, scenario_id){
-    browser()
+    #browser()
     readRDS(paste0(here::here("data/nimble/emu_simulated_data/"), "/", high_name, "_", rep, "_", scenario_id, "_simdata.rds"))$true_occ %>%
       bind_rows(readRDS(paste0(here::here("data/nimble/emu_simulated_data/"), "/", low_name, "_", rep, "_", scenario_id, "_simdata.rds"))$true_occ) %>%
       select(-site_id) %>%
@@ -413,6 +413,52 @@ perc_change_check <- nimble_output %>%
 
 readr::write_csv(perc_change_check, here::here("data/nimble_power_check.csv"))
 
+
+### Let's look at how the estimates converge on the true mean trend across sample sizes
+# get mean true occurrence across replicates for each scenario/emu/sample size
+library(ggplot2)
+
+mean_true_trend <- true_occ %>%
+  left_join(sim_map_names %>%
+              select(high_name, total_n, psi, p, phi) %>% distinct()) %>%
+  group_by(high_name, low_name, total_n, psi, p, phi) %>%
+  summarize(mean_true_trend = mean(true_perc_change)) %>%
+  group_by(psi, p, phi) %>%
+  mutate(scenario = cur_group_id()) %>% 
+  separate(high_name, c("emu", "sim_num"), sep = "_", remove = FALSE)
+
+est_trend_reps <-  nimble_output %>%
+  select(mean, high_name, rep) %>%
+  left_join(sim_map_names %>%
+              select(high_name, low_name, total_n, psi, p, phi) %>% distinct()) %>%
+  group_by(psi, p, phi) %>%
+  mutate(scenario = cur_group_id()) %>% 
+  separate(high_name, c("emu", "sim_num"), sep = "_", remove = FALSE)
+
+mean_est_trend <- est_trend_reps %>%
+  group_by(high_name, low_name, total_n, psi, p, phi, scenario, emu) %>%
+  summarize(mean_est_trend = mean(mean))
+
+mean_precision <- nimble_output %>% 
+  mutate(width = ci97.5 - ci025) %>% 
+  group_by(high_name) %>% 
+  summarize(mean_width = mean(width)) %>%
+  left_join(sim_map_names %>%
+              select(high_name, low_name, total_n, psi, p, phi) %>% distinct()) %>%
+  group_by(psi, p, phi) %>%
+  mutate(scenario = cur_group_id()) %>% 
+  separate(high_name, c("emu", "sim_num"), sep = "_", remove = FALSE)
+
+est_trend_reps %>%
+  filter(scenario == 7, emu == "BRE") %>%
+  ggplot() +
+  geom_point(aes(x = total_n, y = mean)) +
+  ylim(c(-2, 2)) +
+  geom_line(data = mean_true_trend %>% filter(scenario == 7, emu == "BRE"), 
+            aes(x = total_n, y = mean_true_trend), color = "red") +
+  geom_line(data = mean_est_trend %>% filter(scenario == 7, emu == "BRE"), 
+            aes(x = total_n, y = mean_est_trend), color = "blue") +
+  theme_classic()
 
 # # for when the whole thing doesn't run in one go
 # missing_runs <- perc_change_check %>% 
