@@ -118,12 +118,14 @@ sim_scenarios_emu <- sim_scenarios_emu %>%
   rename(high_n = n_samp) %>%
   mutate(low_n = round(high_n*(1/3)), total_n = (high_n + low_n)) %>%
   ungroup() %>%
-  select(-sim_num)
+  select(-sim_num) %>%
+  # let's get a single scenario
+  filter(emu == "SRM", psi %in% c(0.6, 0.03), phi == 0.6, p == 0.8)
 
 # generate master scenario table with random seeds
 
 # set seed for random seed generator
-set.seed(524879)
+set.seed(524878)
 sim_map_names <- sim_scenarios_emu %>%
   rename(high_hex_count = hex_count) %>%
   filter(psi != 0.03) %>%
@@ -172,7 +174,8 @@ init_model <- function(n, year, visit, model_obj){
       colonize = 0.5,
       init_occ = 0.5,
       detect = 0.5,
-      persist = rep(0.5, (nseason-1))
+      persist_intercept = rep(0.5, (nseason-1)),
+      beta = 0.5
     )
   )
 
@@ -237,14 +240,12 @@ fit_model_reps <- function(chunk, reps, n_year, n_visit, data){
 
     # Define Priors
     for (i in 1:(nseason-1)){
-      logit(persist[i]) <- persist_intercept + beta * i
+      persist_intercept[i] ~ dunif(0,1)
+      logit(persist[i]) <- logit(persist_intercept[i]) + logit(beta) * i
     }
 
-    # give it a prior on the logit scale
-    persist_intercept ~ dnorm(0, sd = 5)
-    beta ~ dnorm(0, sd = 5)
-
-    # priors not on logit scale
+    # priors
+    beta ~ dunif(0,1)
     colonize ~ dunif(0,1)
     init_occ ~ dunif(0,1)
     detect ~ dunif(0,1)
@@ -299,7 +300,8 @@ fit_model_reps <- function(chunk, reps, n_year, n_visit, data){
         colonize = 0.5,
         init_occ = 0.5,
         detect = 0.5,
-        persist = rep(0.5, (year-1)))
+        persist_intercept = rep(0.5, (year-1)),
+        beta = 0.5)
 
       # update model with data
       compile_model$mod$y <- occ_array
@@ -323,7 +325,7 @@ dir.create(here::here("data/nimble/emu_summary"), recursive = TRUE)
 dir.create(here::here("data/nimble/emu_posterior"))
 dir.create(here::here("data/nimble/emu_simulated_data"))
 
-ncores <- 52
+ncores <- 2
 cl <- makeCluster(ncores, type = "PSOCK")
 clusterExport(cl, c('init_model', 'sim_map_names', 'sim_dataset', 'sample_data'))
 capture <- clusterEvalQ(cl, {
@@ -333,7 +335,7 @@ capture <- clusterEvalQ(cl, {
   library(dplyr)
 })
 
-simn = 200
+simn = 100
 
 chunk_list <- unique(sim_map_names$chunk_num)
 results <- parLapply(cl, chunk_list, fit_model_reps,
