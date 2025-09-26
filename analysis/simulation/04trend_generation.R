@@ -7,6 +7,7 @@ library(patchwork)
 
 source(here::here("R/sim_dataset.R"))
 source(here::here("R/sim_data_equilib.R"))
+source(here::here("R/sim_data_constphi.R"))
 
 # We want to compare the two approaches for simulating data by visualizing the true occupancy trend
 sim_scenarios <- data.frame(
@@ -56,6 +57,15 @@ true_occ_recurs <- map_dfr(sim_scenarios$sim_num, function(scenario){
             mutate(rep = .x)) %>%
     mutate(sim_num = scenario)
 })
+
+# get variance in the true trend generated for each scenario
+true_occ_recurs %>%
+  mutate(perc_change = (t10 - t1)/t1) %>%
+  select(sim_num, perc_change) %>%
+  group_by(sim_num) %>%
+  summarize(mean = mean(perc_change),
+            variance = var(perc_change)) %>%
+  mutate(bias = mean + 0.25)
 
 true_occ_stats_recurs <- true_occ_recurs %>%
   pivot_longer(starts_with("t"), names_to = "time", values_to = "occ") %>%
@@ -114,6 +124,15 @@ true_occ_equil <- map_dfr(sim_scenarios$sim_num, function(scenario){
     mutate(sim_num = scenario)
 })
 
+# get variance in the true trend generated for each scenario
+true_occ_equil %>%
+  mutate(perc_change = (t10 - t1)/t1) %>%
+  select(sim_num, perc_change) %>%
+  group_by(sim_num) %>%
+  summarize(mean = mean(perc_change),
+            variance = var(perc_change)) %>%
+  mutate(bias = mean + 0.25)
+
 true_occ_stats_equil <- true_occ_equil %>%
   pivot_longer(starts_with("t"), names_to = "time", values_to = "occ") %>%
   select(-rep) %>%
@@ -124,6 +143,59 @@ true_occ_stats_equil <- true_occ_equil %>%
   ungroup() %>%
   mutate(time = as.numeric(stringr::str_remove(time, "t"))) %>%
   left_join(sim_scenarios)
+
+##############################################
+######### Simulate using const phi ###########
+############## trend approach ################
+##############################################
+
+plan(multisession, workers = 14)
+sim_list_constphi <- map(1:simn, ~furrr::future_pmap(sim_scenarios %>% select(-sim_num, -sim_type, -occupancy, -perc_red) %>%
+                                                    mutate(gamma = (0.75*psi*(1-phi))/(1 - (0.75*psi))) %>%
+                                                    relocate(c(gamma, n_sites), .after = last_col()),
+                                                  sim_dataset_constphi, nyear = 10, n_vis = 2,
+                                                  .options=furrr_options(seed = TRUE)) %>%
+                        set_names(sim_scenarios$sim_num)) %>%
+  set_names(paste0("rep", 1:simn))
+
+# reorder so top level of nested list is a sim scenario
+sim_list_scenario_constphi <- map(sim_scenarios$sim_num, function(scenario) {
+  map(1:simn, ~pluck(sim_list_constphi, .x, scenario)) %>%
+    set_names(paste0("rep", 1:simn))}) %>%
+  set_names(sim_scenarios$sim_num)
+
+#get true occurrence for each rep and sim
+true_occ_constphi <- map_dfr(sim_scenarios$sim_num, function(scenario){
+  map_dfr(1:simn, ~pluck(sim_list_scenario_constphi, scenario, .x, "true_occ") %>%
+            select(-site_id) %>%
+            ungroup() %>%
+            summarize(across(everything(), mean)) %>%
+            mutate(rep = .x)) %>%
+    mutate(sim_num = scenario)
+})
+
+# get variance in the true trend generated for each scenario
+true_occ_constphi %>%
+  mutate(perc_change = (t10 - t1)/t1) %>%
+  select(sim_num, perc_change) %>%
+  group_by(sim_num) %>%
+  summarize(mean = mean(perc_change),
+            variance = var(perc_change)) %>%
+  mutate(bias = mean + 0.25)
+
+true_occ_stats_constphi <- true_occ_constphi %>%
+  pivot_longer(starts_with("t"), names_to = "time", values_to = "occ") %>%
+  select(-rep) %>%
+  group_by(sim_num, time) %>%
+  summarize(mean = mean(occ),
+            lower = mean(occ) - qt(1- 0.05/2, (n() - 1))*sd(occ)/sqrt(n()),
+            upper = mean(occ) + qt(1- 0.05/2, (n() - 1))*sd(occ)/sqrt(n())) %>%
+  ungroup() %>%
+  mutate(time = as.numeric(stringr::str_remove(time, "t"))) %>%
+  left_join(sim_scenarios)
+
+
+######## Plotting ########
 
 pal <- c("#8A6240", "#87A96B", "#28587B", "#c9673a")
 
