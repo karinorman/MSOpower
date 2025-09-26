@@ -1,9 +1,9 @@
 #### Explore survival (phi)
-#### Are the simulated annual survival values linearly declining 
+#### Are the simulated annual survival values linearly declining
 
 library(dplyr)
 
-files <- data.frame(files = list.files(here::here("data/nimble/emu_simulated_data/")), 
+files <- data.frame(files = list.files(here::here("data/nimble/emu_simulated_data/")),
                     file_paths = list.files(here::here("data/nimble/emu_simulated_data/"), full.names = TRUE))
 
 check_phi_df <- files %>%
@@ -14,8 +14,8 @@ check_phi_df <- files %>%
   filter(!is.na(low_name)) %>%
   separate(high_name, c("emu", "sim_num"), sep = "_", remove = FALSE) %>%
   filter(emu == "SRM") %>%
-  left_join(sim_map_names) %>%
-  filter(psi == 0.43, phi == 0.8)
+  left_join(sim_map_names) #%>%
+  #filter(psi == 0.43, phi == 0.8)
 
 
 annual_phi <- pmap_dfr(check_phi_df %>% select(high_name, rep, file_paths), function(high_name, rep, file_paths){

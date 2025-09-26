@@ -11,21 +11,21 @@ source(here::here("R/sim_data_constphi.R"))
 
 simn <- 100
 
-sim_scenarios <- data.frame(
-  # these are the parameters that change, taken directly from Woods 2019
-  psi = c(0.03, 0.6, 0.6, 0.6), phi = c(.6, 0.3, 0.4, 0.8), p = rep(0.8, 4)) %>%
-  # get all possible combinations
-  tidyr::expand(psi, phi,p)%>%
-  mutate(sd_phi = 0.04, sd_gamma = 0.01) %>%
-  mutate(occupancy = ifelse(psi == 0.03, "low", "high"),
-         # Use site numbers from Southern Rocky Mountains EMU
-         n_sites = ifelse(psi == 0.03, 11400, 7577),
-         gamma = ifelse(psi == 0.03, 0.02, 0.03)) %>%
-  group_by(phi, p) %>%
-  mutate(simulation_id = cur_group_id()) %>%
-  ungroup() %>%
-  relocate(c(p, gamma, n_sites), .after = last_col()) %>%
-  mutate(name = row_number())
+# sim_scenarios <- data.frame(
+#   # these are the parameters that change, taken directly from Woods 2019
+#   psi = c(0.03, 0.6, 0.6, 0.6), phi = c(.6, 0.3, 0.4, 0.8), p = rep(0.8, 4)) %>%
+#   # get all possible combinations
+#   tidyr::expand(psi, phi,p)%>%
+#   mutate(sd_phi = 0.04, sd_gamma = 0.01) %>%
+#   mutate(occupancy = ifelse(psi == 0.03, "low", "high"),
+#          # Use site numbers from Southern Rocky Mountains EMU
+#          n_sites = ifelse(psi == 0.03, 11400, 7577),
+#          gamma = ifelse(psi == 0.03, 0.02, 0.03)) %>%
+#   group_by(phi, p) %>%
+#   mutate(simulation_id = cur_group_id()) %>%
+#   ungroup() %>%
+#   relocate(c(p, gamma, n_sites), .after = last_col()) %>%
+#   mutate(name = row_number())
 
 sim_scenarios <- data.frame(
   # these are the parameters that change, taken directly from Woods 2019
