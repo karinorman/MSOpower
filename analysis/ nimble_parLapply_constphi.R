@@ -94,7 +94,7 @@ sim_scenarios_emu <- bind_rows(sim_scenarios %>% mutate(emu = "BRE"),
 sample_size_df <- emu_ratio %>%
   filter(occupancy == "high") %>%
   select(emu, hex_count) %>%
-  mutate(log_max_samp = ifelse(hex_count > 1480, log(1480), log(hex_count))) %>%
+  mutate(log_max_samp = ifelse(hex_count > 2000, log(2000), log(hex_count))) %>%
   rowwise() %>%
   mutate(log_samp = list(c(seq(2.3, log_max_samp, by = 0.5), log_max_samp))) %>%
   unnest(log_samp) %>%
@@ -118,7 +118,9 @@ sim_scenarios_emu <- sim_scenarios_emu %>%
   rename(high_n = n_samp) %>%
   mutate(low_n = round(high_n*(1/3)), total_n = (high_n + low_n)) %>%
   ungroup() %>%
-  select(-sim_num)
+  select(-sim_num) %>%
+  # let's get a single scenario
+  filter(emu == "SRM", psi %in% c(0.6, 0.03), phi == 0.6, p == 0.8)
 
 # generate master scenario table with random seeds
 
@@ -141,14 +143,16 @@ sim_map_names <- sim_scenarios_emu %>%
   select(-emu) %>%
   group_by(low_name, high_name) %>%
   mutate(scenario_id = cur_group_id()) %>%
-  ungroup()
+  ungroup() %>%
+  mutate(low_gamma = ((1-perc_red)*low_psi*(1-phi))/(1 - ((1-perc_red)*low_psi)),
+         high_gamma = ((1-perc_red)*psi*(1-phi))/(1 - ((1-perc_red)*psi)))
 
-usethis::use_data(sim_map_names)
+
 ##############################################
 ########### Model and Power check ############
 ##############################################
 
-source(here::here("R/sim_dataset.R"))
+source(here::here("R/sim_data_constphi.R"))
 
 # function to initialize a model object for a given sample size
 init_model <- function(n, year, visit, model_obj){
@@ -237,14 +241,9 @@ fit_model_reps <- function(chunk, reps, n_year, n_visit, data){
 
     # Define Priors
     for (i in 1:(nseason-1)){
-      logit(persist[i]) <- persist_intercept + beta * i
+      persist[i] ~ dunif(0,1)
     }
 
-    # give it a prior on the logit scale
-    persist_intercept ~ dnorm(0, sd = 5)
-    beta ~ dnorm(0, sd = 5)
-
-    # priors not on logit scale
     colonize ~ dunif(0,1)
     init_occ ~ dunif(0,1)
     detect ~ dunif(0,1)
@@ -262,7 +261,8 @@ fit_model_reps <- function(chunk, reps, n_year, n_visit, data){
 
   ## Map across scenarios for EMU and reps (multiple scenarios with the same sample size for each EMU)
   purrr::pmap(map_df, function(high_name, psi, phi, sd_phi, sd_gamma, p, high_hex_count, perc_red,
-                               high_n, low_n, total_n, low_name, low_hex_count, low_psi, scenario_id, seed, year, visit){
+                               high_n, low_n, total_n, low_name, low_hex_count, low_psi, seed, scenario_id,
+                               low_gamma, high_gamma, year, visit){
 
     set.seed(seed)
 
@@ -270,13 +270,13 @@ fit_model_reps <- function(chunk, reps, n_year, n_visit, data){
     for (i in 1:reps){
 
       #simulate high occupancy
-      high_data <- sim_dataset(psi = psi, phi = phi, sd_phi = sd_phi, sd_gamma = sd_gamma, p = p,
-                               n_sites = high_hex_count, perc_red = perc_red, nyear = year, n_vis = visit) %>%
-      append(c("sim_id" = high_name, "rep" = i))
+      high_data <- sim_dataset_constphi(psi = psi, phi = phi, sd_phi = sd_phi, sd_gamma = sd_gamma, p = p, gamma = high_gamma,
+                                     n_sites = high_hex_count, nyear = year, n_vis = visit) %>%
+        append(c("sim_id" = high_name, "rep" = i))
 
       #simulate low occupancy
-      low_data <- sim_dataset(psi = low_psi, phi = phi, sd_phi = sd_phi, sd_gamma = sd_gamma, p = p,
-                              n_sites = low_hex_count, perc_red = perc_red, nyear = year, n_vis = visit) %>%
+      low_data <- sim_dataset_constphi(psi = low_psi, phi = phi, sd_phi = sd_phi, sd_gamma = sd_gamma, p = p, gamma = low_gamma,
+                                    n_sites = low_hex_count, nyear = year, n_vis = visit) %>%
         append(c("sim_id" = low_name, "rep" = i))
 
       # save data out
@@ -285,7 +285,7 @@ fit_model_reps <- function(chunk, reps, n_year, n_visit, data){
 
       #sample observed occupancy as model input
       sample_occ <- dplyr::bind_rows(sample_data(high_data$obs_occ, high_n),
-                              sample_data(low_data$obs_occ, low_n)) %>%
+                                     sample_data(low_data$obs_occ, low_n)) %>%
         dplyr::arrange(visit)
 
       occ_array <- sample_occ %>%
@@ -323,9 +323,9 @@ dir.create(here::here("data/nimble/emu_summary"), recursive = TRUE)
 dir.create(here::here("data/nimble/emu_posterior"))
 dir.create(here::here("data/nimble/emu_simulated_data"))
 
-ncores <- 52
+ncores <- 12
 cl <- makeCluster(ncores, type = "PSOCK")
-clusterExport(cl, c('init_model', 'sim_map_names', 'sim_dataset', 'sample_data'))
+clusterExport(cl, c('init_model', 'sim_map_names', 'sim_dataset_constphi', 'sample_data'))
 capture <- clusterEvalQ(cl, {
   library(nimbleEcology)
   library(magrittr)
@@ -333,15 +333,15 @@ capture <- clusterEvalQ(cl, {
   library(dplyr)
 })
 
-simn = 200
+simn = 100
 
 chunk_list <- unique(sim_map_names$chunk_num)
 results <- parLapply(cl, chunk_list, fit_model_reps,
-       reps = simn, n_year = 10, n_visit = 2, data = sim_map_names)
+                     reps = simn, n_year = 10, n_visit = 2, data = sim_map_names)
 
 
-lapply(chunk_list, fit_model_reps,
-       reps = 100, n_year = 10, n_visit = 2, data = sim_map_names)
+# lapply(chunk_list, fit_model_reps,
+#        reps = 100, n_year = 10, n_visit = 2, data = sim_map_names)
 
 ###########################################################
 ################## Processing runs ########################
@@ -364,9 +364,9 @@ nimble_output <- purrr::map_dfr(list.files(here::here("data/nimble/emu_summary/"
 
 # get dataframe of sims and reps we've already done
 sim_data_files <- data.frame(files = list.files(here::here("data/nimble/emu_simulated_data/")),
-                         file_paths = list.files(here::here("data/nimble/emu_simulated_data/"), full.names = TRUE)) %>%
-                         separate(files, c("EMU", "sim_id", "rep", "scenario_id")) %>%
-    unite("high_name", c("EMU", "sim_id")) %>%
+                             file_paths = list.files(here::here("data/nimble/emu_simulated_data/"), full.names = TRUE)) %>%
+  separate(files, c("EMU", "sim_id", "rep", "scenario_id")) %>%
+  unite("high_name", c("EMU", "sim_id")) %>%
   mutate(scenario_id = as.integer(scenario_id)) %>%
   left_join(sim_map_names %>% select(high_name, low_name, scenario_id)) %>%
   filter(!is.na(low_name)) %>%
@@ -374,13 +374,13 @@ sim_data_files <- data.frame(files = list.files(here::here("data/nimble/emu_simu
 
 # get true occupancy
 true_occ <- pmap_dfr(sim_data_files %>% select(high_name, rep, low_name, scenario_id), function(high_name, rep, low_name, scenario_id){
-    #browser()
-    readRDS(paste0(here::here("data/nimble/emu_simulated_data/"), "/", high_name, "_", rep, "_", scenario_id, "_simdata.rds"))$true_occ %>%
-      bind_rows(readRDS(paste0(here::here("data/nimble/emu_simulated_data/"), "/", low_name, "_", rep, "_", scenario_id, "_simdata.rds"))$true_occ) %>%
-      select(-site_id) %>%
-      ungroup() %>%
-      summarize(across(everything(), mean)) %>%
-      mutate(rep = rep, high_name = high_name, low_name = low_name, scenario_id = scenario_id)
+
+  readRDS(paste0(here::here("data/nimble/emu_simulated_data/"), "/", high_name, "_", rep, "_", scenario_id, "_simdata.rds"))$true_occ %>%
+    bind_rows(readRDS(paste0(here::here("data/nimble/emu_simulated_data/"), "/", low_name, "_", rep, "_", scenario_id, "_simdata.rds"))$true_occ) %>%
+    select(-site_id) %>%
+    ungroup() %>%
+    summarize(across(everything(), mean)) %>%
+    mutate(rep = rep, high_name = high_name, low_name = low_name, scenario_id = scenario_id)
 }) %>%
   mutate(true_perc_change = (t10-t1)/t1) %>%
   select(high_name, low_name, rep, true_perc_change)
@@ -418,52 +418,6 @@ perc_change_check <- nimble_output %>%
 
 readr::write_csv(perc_change_check, here::here("data/nimble_power_check.csv"))
 
-
-### Let's look at how the estimates converge on the true mean trend across sample sizes
-# get mean true occurrence across replicates for each scenario/emu/sample size
-library(ggplot2)
-
-mean_true_trend <- true_occ %>%
-  left_join(sim_map_names %>%
-              select(high_name, total_n, psi, p, phi) %>% distinct()) %>%
-  group_by(high_name, low_name, total_n, psi, p, phi) %>%
-  summarize(mean_true_trend = mean(true_perc_change)) %>%
-  group_by(psi, p, phi) %>%
-  mutate(scenario = cur_group_id()) %>%
-  separate(high_name, c("emu", "sim_num"), sep = "_", remove = FALSE)
-
-est_trend_reps <-  nimble_output %>%
-  select(mean, high_name, rep) %>%
-  left_join(sim_map_names %>%
-              select(high_name, low_name, total_n, psi, p, phi) %>% distinct()) %>%
-  group_by(psi, p, phi) %>%
-  mutate(scenario = cur_group_id()) %>%
-  separate(high_name, c("emu", "sim_num"), sep = "_", remove = FALSE)
-
-mean_est_trend <- est_trend_reps %>%
-  group_by(high_name, low_name, total_n, psi, p, phi, scenario, emu) %>%
-  summarize(mean_est_trend = mean(mean))
-
-mean_precision <- nimble_output %>%
-  mutate(width = ci97.5 - ci025) %>%
-  group_by(high_name) %>%
-  summarize(mean_width = mean(width)) %>%
-  left_join(sim_map_names %>%
-              select(high_name, low_name, total_n, psi, p, phi) %>% distinct()) %>%
-  group_by(psi, p, phi) %>%
-  mutate(scenario = cur_group_id()) %>%
-  separate(high_name, c("emu", "sim_num"), sep = "_", remove = FALSE)
-
-est_trend_reps %>%
-  filter(scenario == 7, emu == "BRE") %>%
-  ggplot() +
-  geom_point(aes(x = total_n, y = mean)) +
-  ylim(c(-2, 2)) +
-  geom_line(data = mean_true_trend %>% filter(scenario == 7, emu == "BRE"),
-            aes(x = total_n, y = mean_true_trend), color = "red") +
-  geom_line(data = mean_est_trend %>% filter(scenario == 7, emu == "BRE"),
-            aes(x = total_n, y = mean_est_trend), color = "blue") +
-  theme_classic()
 
 # # for when the whole thing doesn't run in one go
 # missing_runs <- perc_change_check %>%
