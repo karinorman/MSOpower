@@ -16,13 +16,16 @@ library(parallel)
 source(here::here("R/sim_dataset.R"))
 source(here::here("R/fit_model_reps.R"))
 
+load(here::here("data/sim_map_names.rda"))
+
+# Let's start with just one EMU
+sim_map_names <- sim_map_names %>%
+  filter(stringr::str_detect(high_name, "^SRM"))
+
 ## Fixed study characteristics
 nyear = 10
-n_sites = sum(emu_veg$hex_num)
 n_vis = 2
-simn = 200
-
-load(here::here("data/sim_map_names.rda"))
+simn = 300
 
 ###############################################################
 ################## Recursive Trend Sim ########################
@@ -33,7 +36,7 @@ dir.create(here::here("data/nimble/emu_summary"), recursive = TRUE)
 dir.create(here::here("data/nimble/emu_posterior"))
 dir.create(here::here("data/nimble/emu_simulated_data"))
 
-ncores <- 11
+ncores <- 13
 cl <- makeCluster(ncores, type = "PSOCK")
 clusterExport(cl, c('init_model', 'sim_map_names', 'sim_dataset', 'sample_data'))
 capture <- clusterEvalQ(cl, {
@@ -46,11 +49,12 @@ capture <- clusterEvalQ(cl, {
 
 chunk_list <- unique(sim_map_names$chunk_num)
 results <- parLapply(cl, chunk_list, fit_model_reps,
-       reps = simn, n_year = 10, n_visit = 2, data = sim_map_names)
+       reps = simn, n_year = 10, n_visit = 2, data = sim_map_names, 
+       method = "recursive", save_ending = "")
 
 
-lapply(chunk_list, fit_model_reps,
-       reps = 100, n_year = 10, n_visit = 2, data = sim_map_names, method = "recursive", save_ending = "")
+# lapply(chunk_list, fit_model_reps,
+#        reps = simn, n_year = 10, n_visit = 2, data = sim_map_names, method = "recursive", save_ending = "")
 
 #################################################################
 ################## Equilibrium Trend Sim ########################
@@ -63,9 +67,9 @@ dir.create(paste0(here::here("data/nimble/emu_summary"), path_ending), recursive
 dir.create(paste0(here::here("data/nimble/emu_posterior"), path_ending))
 dir.create(paste0(here::here("data/nimble/emu_simulated_data"), path_ending))
 
-ncores <- 11
+ncores <- 13
 cl <- makeCluster(ncores, type = "PSOCK")
-clusterExport(cl, c('init_model', 'sim_map_names', 'sim_dataset', 'sample_data'))
+clusterExport(cl, c('init_model', 'sim_map_names', 'sim_dataset_equil', 'sample_data'))
 capture <- clusterEvalQ(cl, {
   library(nimbleEcology)
   library(magrittr)
@@ -76,11 +80,49 @@ capture <- clusterEvalQ(cl, {
 
 chunk_list <- unique(sim_map_names$chunk_num)
 results <- parLapply(cl, chunk_list, fit_model_reps,
-                     reps = simn, n_year = 10, n_visit = 2, data = sim_map_names)
+                     reps = simn, n_year = 10, n_visit = 2, data = sim_map_names, 
+                     method = "equilibrium", save_ending = path_ending)
 
 
-lapply(chunk_list, fit_model_reps,
-       reps = 100, n_year = 10, n_visit = 2, data = sim_map_names, method = "equilibrium", save_ending = path_ending)
+# lapply(chunk_list, fit_model_reps,
+#        reps = simn, n_year = 10, n_visit = 2, data = sim_map_names, 
+#        method = "equilibrium", save_ending = path_ending)
+
+#######################################################################
+################## Constant Survival Trend Sim ########################
+#######################################################################
+
+path_ending <- "_constphi"
+
+# initialize save out directories
+dir.create(paste0(here::here("data/nimble/emu_summary"), path_ending), recursive = TRUE)
+dir.create(paste0(here::here("data/nimble/emu_posterior"), path_ending))
+dir.create(paste0(here::here("data/nimble/emu_simulated_data"), path_ending))
+
+sim_map_constphi <- sim_map_names %>%
+  mutate(low_gamma = ((1-perc_red)*low_psi*(1-phi))/(1 - ((1-perc_red)*low_psi)),
+                high_gamma = ((1-perc_red)*psi*(1-phi))/(1 - ((1-perc_red)*psi)))
+
+ncores <- 13
+cl <- makeCluster(ncores, type = "PSOCK")
+clusterExport(cl, c('init_model', 'sim_map_constphi', 'sim_dataset_constphi', 'sample_data'))
+capture <- clusterEvalQ(cl, {
+  library(nimbleEcology)
+  library(magrittr)
+  library(purrr)
+  library(dplyr)
+})
+
+
+chunk_list <- unique(sim_map_constphi$chunk_num)
+results <- parLapply(cl, chunk_list, fit_model_reps,
+                     reps = simn, n_year = 10, n_visit = 2, data = sim_map_constphi, 
+                     method = "const_phi", save_ending = path_ending)
+
+
+# lapply(chunk_list, fit_model_reps,
+#        reps = simn, n_year = 10, n_visit = 2, data = sim_map_constphi, 
+#        method = "const_phi", save_ending = path_ending)
 
 ###########################################################
 ################## Processing runs ########################

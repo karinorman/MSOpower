@@ -9,54 +9,96 @@ fit_model_reps <- function(chunk, reps, n_year, n_visit, data, method = c("recur
   
   #### Set up nimble model for that sample size ####
   
+  if (method %in% c("recursive", "equilibrium")){
   # Model code for single EMU year estimate
-  dynoccmod_code <- nimble::nimbleCode({
-    
-    # The whole likelihood for the dynamic occupancy model is contained inside
-    # dDynOcc_sss. The suffix _sss indicates that persistence, colonization, and
-    # detection are provided as scalars (one value for the whole site's
-    # detection history). Other variants exist with suffixes like _svm (which
-    # would mean that persistence is (s)calar, colonization is a (v)ector
-    # varying with season, and detection is a (m)atrix varying with season and
-    # with replicate)
-    
-    for (i in 1:nsite) {
-      y[i, 1:nseason, 1:nrep] ~ dDynOcc_vss(probPersist = persist[1:(nseason-1)],
-                                            probColonize = colonize,
-                                            init = init_occ,
-                                            p = detect,
-                                            start = start_indexes[1:nseason], # Start and end arguments allow you to provide ragged mtx data
-                                            end = end_indexes[1:nseason])
+    dynoccmod_code <- nimble::nimbleCode({
       
+      # The whole likelihood for the dynamic occupancy model is contained inside
+      # dDynOcc_sss. The suffix _sss indicates that persistence, colonization, and
+      # detection are provided as scalars (one value for the whole site's
+      # detection history). Other variants exist with suffixes like _svm (which
+      # would mean that persistence is (s)calar, colonization is a (v)ector
+      # varying with season, and detection is a (m)atrix varying with season and
+      # with replicate)
       
-    }
-    
-    # Define Priors
-    for (i in 1:(nseason-1)){
-      persist_intercept[i] ~ dunif(0,1)
-      logit(persist[i]) <- logit(persist_intercept[i]) + logit(beta) * i
-    }
-    
-    # priors
-    beta ~ dunif(0,1)
-    colonize ~ dunif(0,1)
-    init_occ ~ dunif(0,1)
-    detect ~ dunif(0,1)
-    
-    # Derive posterior for year
-    psi[1] <-  init_occ
-    for (i in 2:nseason){
-      psi[i] <- psi[i-1]*(persist[i-1]) + (1-psi[i-1])*colonize
-    }
-    perc_change <- (psi[10] - psi[1])/psi[1]
-  })
+      for (i in 1:nsite) {
+        y[i, 1:nseason, 1:nrep] ~ dDynOcc_vss(probPersist = persist[1:(nseason-1)],
+                                              probColonize = colonize,
+                                              init = init_occ,
+                                              p = detect,
+                                              start = start_indexes[1:nseason], # Start and end arguments allow you to provide ragged mtx data
+                                              end = end_indexes[1:nseason])
+        
+        
+      }
+      
+      # Define Priors
+      for (i in 1:(nseason-1)){
+        persist_intercept[i] ~ dunif(0,1)
+        logit(persist[i]) <- logit(persist_intercept[i]) + logit(beta) * i
+      }
+      
+      # priors
+      beta ~ dunif(0,1)
+      colonize ~ dunif(0,1)
+      init_occ ~ dunif(0,1)
+      detect ~ dunif(0,1)
+      
+      # Derive posterior for year
+      psi[1] <-  init_occ
+      for (i in 2:nseason){
+        psi[i] <- psi[i-1]*(persist[i-1]) + (1-psi[i-1])*colonize
+      }
+      perc_change <- (psi[10] - psi[1])/psi[1]
+    })
+  } else{
+    # Model code for single EMU year estimate
+    dynoccmod_code <- nimble::nimbleCode({
+      
+      # The whole likelihood for the dynamic occupancy model is contained inside
+      # dDynOcc_sss. The suffix _sss indicates that persistence, colonization, and
+      # detection are provided as scalars (one value for the whole site's
+      # detection history). Other variants exist with suffixes like _svm (which
+      # would mean that persistence is (s)calar, colonization is a (v)ector
+      # varying with season, and detection is a (m)atrix varying with season and
+      # with replicate)
+      
+      for (i in 1:nsite) {
+        y[i, 1:nseason, 1:nrep] ~ dDynOcc_vss(probPersist = persist[1:(nseason-1)],
+                                              probColonize = colonize,
+                                              init = init_occ,
+                                              p = detect,
+                                              start = start_indexes[1:nseason], # Start and end arguments allow you to provide ragged mtx data
+                                              end = end_indexes[1:nseason])
+        
+        
+      }
+      
+      # Define Priors
+      for (i in 1:(nseason-1)){
+        persist[i] ~ dunif(0,1)
+      }
+      
+      colonize ~ dunif(0,1)
+      init_occ ~ dunif(0,1)
+      detect ~ dunif(0,1)
+      
+      # Derive posterior for year
+      psi[1] <-  init_occ
+      for (i in 2:nseason){
+        psi[i] <- psi[i-1]*(persist[i-1]) + (1-psi[i-1])*colonize
+      }
+      perc_change <- (psi[10] - psi[1])/psi[1]
+    })
+  }
   
   # create template model that can be updated with data
-  compile_model <- init_model(n = sample_size, year = n_year, visit = n_visit, model_obj = dynoccmod_code)
+  compile_model <- init_model(n = sample_size, year = n_year, visit = n_visit, model_obj = dynoccmod_code, method = method)
   
   ## Map across scenarios for EMU and reps (multiple scenarios with the same sample size for each EMU)
-  purrr::pmap(map_df, function(high_name, psi, phi, sd_phi, sd_gamma, p, high_hex_count, perc_red,
-                               high_n, low_n, total_n, low_name, low_hex_count, low_psi, scenario_id, seed, year, visit){
+  purrr::pmap(map_df, function(high_name, psi, phi, sd_phi, sd_gamma, p, perc_red,  total_n,
+                               high_n, low_n, high_hex_count, low_hex_count, low_name, low_psi, seed, 
+                               scenario_id, low_gamma, high_gamma, year, visit){
     
     set.seed(seed)
 
@@ -115,13 +157,21 @@ fit_model_reps <- function(chunk, reps, n_year, n_visit, data, method = c("recur
         purrr::map( ~ .x |> dplyr::select(-visit) |> as.matrix()) %>%
         simplify2array()
       
+      if (method %in% c("recursive", "equilibrium")){
       # list of new initialized variables
-      new_inits <-  list(
-        colonize = 0.5,
-        init_occ = 0.5,
-        detect = 0.5,
-        persist_intercept = rep(0.5, (year-1)),
-        beta = 0.5)
+        new_inits <-  list(
+          colonize = 0.5,
+          init_occ = 0.5,
+          detect = 0.5,
+          persist_intercept = rep(0.5, (year-1)),
+          beta = 0.5)
+      } else{
+        new_inits <-  list(
+          colonize = 0.5,
+          init_occ = 0.5,
+          detect = 0.5,
+          persist = rep(0.5, (year-1)))
+      }
       
       # update model with data
       compile_model$mod$y <- occ_array
@@ -135,7 +185,7 @@ fit_model_reps <- function(chunk, reps, n_year, n_visit, data, method = c("recur
         tibble::rownames_to_column(var = "parameter")
       
       readr::write_csv(summary, paste0(here::here("data/nimble/emu_summary/"), save_ending, "/", high_name, "_", i, "_", scenario_id, "_summary.csv"))
-      saveRDS(fit, paste0(here::here("data/nimble/emu_posterior/"), "/", save_ending, high_name, "_", i, "_", scenario_id, "_posterior.rds"))
+      saveRDS(fit, paste0(here::here("data/nimble/emu_posterior/"), save_ending, "/", high_name, "_", i, "_", scenario_id, "_posterior.rds"))
     }
   }, year = n_year, visit = n_visit)
 }
@@ -147,7 +197,7 @@ sample_data <- function(data, sample_size){
 }
 
 # function to initialize a model object for a given sample size
-init_model <- function(n, year, visit, model_obj){
+init_model <- function(n, year, visit, model_obj, method = c("recursive", "equilibrium", "const_phi")){
   
   nsite <- n
   nseason <- year
@@ -155,6 +205,23 @@ init_model <- function(n, year, visit, model_obj){
   
   # make observed occurrence an array with site x year(season) x visit(rep)
   obs_occ_init <- array(sample(c(0,1), (nsite * nseason * nrep), replace = TRUE), c(nsite, nseason, nrep))
+  
+  if (method %in% c("recursive", "equilibrium")){
+    inits_list <- list(
+      colonize = 0.5,
+      init_occ = 0.5,
+      detect = 0.5,
+      persist_intercept = rep(0.5, (nseason-1)),
+      beta = 0.5
+    )
+  } else {
+    inits_list <- list(
+      colonize = 0.5,
+      init_occ = 0.5,
+      detect = 0.5,
+      persist = rep(0.5, (nseason-1))
+    )
+  }
   
   # Build the model
   mod <- nimble::nimbleModel(
@@ -164,13 +231,7 @@ init_model <- function(n, year, visit, model_obj){
                      end_indexes = rep(nrep, nseason)
     ),
     data = list(y = obs_occ_init),
-    inits = list(
-      colonize = 0.5,
-      init_occ = 0.5,
-      detect = 0.5,
-      persist_intercept = rep(0.5, (nseason-1)),
-      beta = 0.5
-    )
+    inits = inits_list
   )
   
   # shouldn't NA, infinite, or positive (that's a dist issue)
