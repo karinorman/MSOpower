@@ -94,7 +94,7 @@ sim_scenarios_emu <- bind_rows(sim_scenarios %>% mutate(emu = "BRE"),
 sample_size_df <- emu_ratio %>%
   filter(occupancy == "high") %>%
   select(emu, hex_count) %>%
-  mutate(log_max_samp = ifelse(hex_count > 2000, log(2000), log(hex_count))) %>%
+  mutate(log_max_samp = ifelse(hex_count > 1480, log(1480), log(hex_count))) %>%
   rowwise() %>%
   mutate(log_samp = list(c(seq(2.3, log_max_samp, by = 0.5), log_max_samp))) %>%
   unnest(log_samp) %>%
@@ -120,7 +120,7 @@ sim_scenarios_emu <- sim_scenarios_emu %>%
   ungroup() %>%
   select(-sim_num) %>%
   # let's get a single scenario
-  filter(emu == "SRM", psi %in% c(0.6, 0.03), phi == 0.6, p == 0.8)
+  filter(emu == "SRM")
 
 # generate master scenario table with random seeds
 
@@ -280,8 +280,8 @@ fit_model_reps <- function(chunk, reps, n_year, n_visit, data){
         append(c("sim_id" = low_name, "rep" = i))
 
       # save data out
-      saveRDS(high_data, paste0(here::here("data/nimble/emu_simulated_data/"), "/", high_name, "_", i, "_", scenario_id, "_simdata.rds"))
-      saveRDS(low_data, paste0(here::here("data/nimble/emu_simulated_data/"), "/", low_name, "_", i, "_", scenario_id, "_simdata.rds"))
+      saveRDS(high_data, paste0(here::here("data/nimble/emu_simulated_data_constphi/"), "/", high_name, "_", i, "_", scenario_id, "_simdata.rds"))
+      saveRDS(low_data, paste0(here::here("data/nimble/emu_simulated_data_constphi/"), "/", low_name, "_", i, "_", scenario_id, "_simdata.rds"))
 
       #sample observed occupancy as model input
       sample_occ <- dplyr::bind_rows(sample_data(high_data$obs_occ, high_n),
@@ -312,18 +312,18 @@ fit_model_reps <- function(chunk, reps, n_year, n_visit, data){
         dplyr::mutate(high_name = high_name, rep = i) |>
         tibble::rownames_to_column(var = "parameter")
 
-      readr::write_csv(summary, paste0(here::here("data/nimble/emu_summary/"), "/", high_name, "_", i, "_", scenario_id, "_summary.csv"))
-      saveRDS(fit, paste0(here::here("data/nimble/emu_posterior/"), "/", high_name, "_", i, "_", scenario_id, "_posterior.rds"))
+      readr::write_csv(summary, paste0(here::here("data/nimble/emu_summary_constphi/"), "/", high_name, "_", i, "_", scenario_id, "_summary.csv"))
+      saveRDS(fit, paste0(here::here("data/nimble/emu_posterior_constphi/"), "/", high_name, "_", i, "_", scenario_id, "_posterior.rds"))
     }
   }, year = n_year, visit = n_visit)
 }
 
 # initialize save out directories
-dir.create(here::here("data/nimble/emu_summary"), recursive = TRUE)
-dir.create(here::here("data/nimble/emu_posterior"))
-dir.create(here::here("data/nimble/emu_simulated_data"))
+dir.create(here::here("data/nimble/emu_summary_constphi"), recursive = TRUE)
+dir.create(here::here("data/nimble/emu_posterior_constphi"))
+dir.create(here::here("data/nimble/emu_simulated_data_constphi"))
 
-ncores <- 12
+ncores <- 11
 cl <- makeCluster(ncores, type = "PSOCK")
 clusterExport(cl, c('init_model', 'sim_map_names', 'sim_dataset_constphi', 'sample_data'))
 capture <- clusterEvalQ(cl, {
@@ -340,8 +340,8 @@ results <- parLapply(cl, chunk_list, fit_model_reps,
                      reps = simn, n_year = 10, n_visit = 2, data = sim_map_names)
 
 
-# lapply(chunk_list, fit_model_reps,
-#        reps = 100, n_year = 10, n_visit = 2, data = sim_map_names)
+lapply(chunk_list, fit_model_reps,
+       reps = 100, n_year = 10, n_visit = 2, data = sim_map_names)
 
 ###########################################################
 ################## Processing runs ########################
@@ -358,13 +358,13 @@ results <- parLapply(cl, chunk_list, fit_model_reps,
 # sim_map_metadata <- read.csv(here::here("data/sim_map_metadata.csv"))
 
 # read in estimates
-nimble_output <- purrr::map_dfr(list.files(here::here("data/nimble/emu_summary/"), full.names = TRUE), ~read.csv(.x) %>%
+nimble_output <- purrr::map_dfr(list.files(here::here("data/nimble/emu_summary_constphi/"), full.names = TRUE), ~read.csv(.x) %>%
                                   filter(parameter == "perc_change") %>%
                                   select(mean, ci025 = X2.5., ci97.5 = X97.5., high_name, rep))
 
 # get dataframe of sims and reps we've already done
-sim_data_files <- data.frame(files = list.files(here::here("data/nimble/emu_simulated_data/")),
-                             file_paths = list.files(here::here("data/nimble/emu_simulated_data/"), full.names = TRUE)) %>%
+sim_data_files <- data.frame(files = list.files(here::here("data/nimble/emu_simulated_data_constphi/")),
+                             file_paths = list.files(here::here("data/nimble/emu_simulated_data_constphi/"), full.names = TRUE)) %>%
   separate(files, c("EMU", "sim_id", "rep", "scenario_id")) %>%
   unite("high_name", c("EMU", "sim_id")) %>%
   mutate(scenario_id = as.integer(scenario_id)) %>%
@@ -375,8 +375,8 @@ sim_data_files <- data.frame(files = list.files(here::here("data/nimble/emu_simu
 # get true occupancy
 true_occ <- pmap_dfr(sim_data_files %>% select(high_name, rep, low_name, scenario_id), function(high_name, rep, low_name, scenario_id){
 
-  readRDS(paste0(here::here("data/nimble/emu_simulated_data/"), "/", high_name, "_", rep, "_", scenario_id, "_simdata.rds"))$true_occ %>%
-    bind_rows(readRDS(paste0(here::here("data/nimble/emu_simulated_data/"), "/", low_name, "_", rep, "_", scenario_id, "_simdata.rds"))$true_occ) %>%
+  readRDS(paste0(here::here("data/nimble/emu_simulated_data_constphi/"), "/", high_name, "_", rep, "_", scenario_id, "_simdata.rds"))$true_occ %>%
+    bind_rows(readRDS(paste0(here::here("data/nimble/emu_simulated_data_constphi/"), "/", low_name, "_", rep, "_", scenario_id, "_simdata.rds"))$true_occ) %>%
     select(-site_id) %>%
     ungroup() %>%
     summarize(across(everything(), mean)) %>%
