@@ -160,7 +160,30 @@ sim_data_files <- data.frame(files = list.files(here::here("data/nimble/emu_simu
   select(-file_paths)
 
 # get true occupancy
-true_occ <- pmap_dfr(sim_data_files %>% select(high_name, rep, low_name, scenario_id, type, ending), 
+# for each simulation setting
+true_occ_indiv <- pmap_dfr(sim_data_files %>% 
+                              select(high_name, rep, low_name, scenario_id, type, ending) %>%
+                              pivot_longer(cols = c(low_name, high_name), names_to = "initial_occ", values_to = "name") %>%
+                              select(name, rep, scenario_id, type, ending, initial_occ), 
+                            function(name, rep, scenario_id, type, ending, initial_occ){
+                              
+                              #browser()
+                              readRDS(paste0(here::here("data/nimble/emu_simulated_data"), ending, "/", name, "_", rep, "_", scenario_id, "_simdata.rds"))$true_occ %>%
+                                select(-site_id) %>%
+                                ungroup() %>%
+                                summarize(across(everything(), mean)) %>%
+                                mutate(rep = rep, name = name, scenario_id = scenario_id, type = type, initial_occ = initial_occ)
+                            }) %>%
+  mutate(true_perc_change = (t10-t1)/t1) %>%
+  left_join(sim_map_names %>%
+              select(name = high_name, psi, phi, scenario_id) %>%
+              bind_rows(sim_map_names %>%
+                          select(name = low_name, psi = low_psi, phi, scenario_id)))
+
+readr::write_csv(true_occ_indiv, here::here("data/true_occ_indiv_SRM.csv"))
+
+# and paired for each scenario
+true_occ_paired <- pmap_dfr(sim_data_files %>% select(high_name, rep, low_name, scenario_id, type, ending), 
                                                                          function(high_name, rep, low_name, scenario_id, type, ending){
   
                                                                            #browser()
@@ -173,7 +196,7 @@ true_occ <- pmap_dfr(sim_data_files %>% select(high_name, rep, low_name, scenari
 }) %>%
   mutate(true_perc_change = (t10-t1)/t1) 
 
-readr::write_csv(true_occ, here::here("data/true_occ_SRM.csv"))
+readr::write_csv(true_occ_paired, here::here("data/true_occ_paired_SRM.csv"))
 
 # perc_change power checks
 perc_change_check <- nimble_output %>%
