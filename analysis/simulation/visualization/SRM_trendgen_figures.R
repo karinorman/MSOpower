@@ -4,7 +4,7 @@ library(ggplot2)
 library(patchwork)
 
 # trend gen comparison data for SRM EMU
-srm_power_check <- read.csv(here::here("data/nimble_power_check.csv"))
+srm_power_check <- read.csv(here::here("data/nimble_power_check_SRM.csv"))
 # true occurrence for SRM comparision
 srm_true_occ <- read.csv(here::here("data/true_occ_SRM.csv"))
 # true occurrence by individual sim_id rather than paired
@@ -73,9 +73,9 @@ trend_gen_df <- indv_srm_true_occ %>%
             lower = mean(occupancy) - qt(1- 0.05/2, (n() - 1))*sd(occupancy)/sqrt(n()),
             upper = mean(occupancy) + qt(1- 0.05/2, (n() - 1))*sd(occupancy)/sqrt(n())) %>%
   mutate(time = as.integer(unlist(stringr::str_extract_all(time, "[0-9]+"))))
-  
 
-  
+
+
 pal <- c("#8A6240", "#87A96B", "#28587B", "#c9673a")
 
 high_occ_plot <- trend_gen_df %>%
@@ -222,12 +222,12 @@ ggsave(here::here("figures/occ_trend_plot_srm.jpg"), occ_trend_plot, width = 8, 
 #   ) +
 #   ylab("Percent Success") +
 #   xlab("Sample Size")
-# 
+#
 # ggsave(here::here("figures/emu_power_nimble.png"), nimble_emu_plt, height = 12, width = 15)
 
 ### Let's get the same thing with the spoccupancy approach
 # power_eval <- read.csv(here::here("data/power_eval.csv"))
-# 
+#
 # bre_spoc_plt <- power_eval %>%
 #                            filter(total_n < 1200, emu == "BRE") %>%
 #                            select(-sim_id) %>%
@@ -262,5 +262,5 @@ ggsave(here::here("figures/occ_trend_plot_srm.jpg"), occ_trend_plot, width = 8, 
 #                            ) +
 #                            ylab("Percent Success") +
 #                            xlab("Sample Size")
-# 
+#
 # ggsave(here::here("figures/bre_power_spoc.png"), bre_spoc_plt, height = 12, width = 10)
