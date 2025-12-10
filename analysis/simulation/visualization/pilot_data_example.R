@@ -3,6 +3,7 @@ library(terra)
 library(sf)
 library(tidyterra)
 library(geosphere)
+library(ggplot2)
 
 ############################################################################
 ## Let's make an example figure showing hexes with samples in those hexes ##
