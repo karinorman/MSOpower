@@ -49,7 +49,7 @@ capture <- clusterEvalQ(cl, {
 
 chunk_list <- unique(sim_map_names$chunk_num)
 results <- parLapply(cl, chunk_list, fit_model_reps,
-       reps = simn, n_year = 10, n_visit = 2, data = sim_map_names, 
+       reps = simn, n_year = 10, n_visit = 2, data = sim_map_names,
        method = "recursive", save_ending = "")
 
 
@@ -80,12 +80,12 @@ capture <- clusterEvalQ(cl, {
 
 chunk_list <- unique(sim_map_names$chunk_num)
 results <- parLapply(cl, chunk_list, fit_model_reps,
-                     reps = simn, n_year = 10, n_visit = 2, data = sim_map_names, 
+                     reps = simn, n_year = 10, n_visit = 2, data = sim_map_names,
                      method = "equilibrium", save_ending = path_ending)
 
 
 # lapply(chunk_list, fit_model_reps,
-#        reps = simn, n_year = 10, n_visit = 2, data = sim_map_names, 
+#        reps = simn, n_year = 10, n_visit = 2, data = sim_map_names,
 #        method = "equilibrium", save_ending = path_ending)
 
 #######################################################################
@@ -116,12 +116,12 @@ capture <- clusterEvalQ(cl, {
 
 chunk_list <- unique(sim_map_constphi$chunk_num)
 results <- parLapply(cl, chunk_list, fit_model_reps,
-                     reps = simn, n_year = 10, n_visit = 2, data = sim_map_constphi, 
+                     reps = simn, n_year = 10, n_visit = 2, data = sim_map_constphi,
                      method = "const_phi", save_ending = path_ending)
 
 
 # lapply(chunk_list, fit_model_reps,
-#        reps = simn, n_year = 10, n_visit = 2, data = sim_map_constphi, 
+#        reps = simn, n_year = 10, n_visit = 2, data = sim_map_constphi,
 #        method = "const_phi", save_ending = path_ending)
 
 ###########################################################
@@ -161,12 +161,12 @@ sim_data_files <- data.frame(files = list.files(here::here("data/nimble/emu_simu
 
 # get true occupancy
 # for each simulation setting
-true_occ_indiv <- pmap_dfr(sim_data_files %>% 
+true_occ_indiv <- pmap_dfr(sim_data_files %>%
                               select(high_name, rep, low_name, scenario_id, type, ending) %>%
                               pivot_longer(cols = c(low_name, high_name), names_to = "initial_occ", values_to = "name") %>%
-                              select(name, rep, scenario_id, type, ending, initial_occ), 
+                              select(name, rep, scenario_id, type, ending, initial_occ),
                             function(name, rep, scenario_id, type, ending, initial_occ){
-                              
+
                               #browser()
                               readRDS(paste0(here::here("data/nimble/emu_simulated_data"), ending, "/", name, "_", rep, "_", scenario_id, "_simdata.rds"))$true_occ %>%
                                 select(-site_id) %>%
@@ -183,9 +183,9 @@ true_occ_indiv <- pmap_dfr(sim_data_files %>%
 readr::write_csv(true_occ_indiv, here::here("data/true_occ_indiv_SRM.csv"))
 
 # and paired for each scenario
-true_occ_paired <- pmap_dfr(sim_data_files %>% select(high_name, rep, low_name, scenario_id, type, ending), 
+true_occ_paired <- pmap_dfr(sim_data_files %>% select(high_name, rep, low_name, scenario_id, type, ending),
                                                                          function(high_name, rep, low_name, scenario_id, type, ending){
-  
+
                                                                            #browser()
     readRDS(paste0(here::here("data/nimble/emu_simulated_data"), ending, "/", high_name, "_", rep, "_", scenario_id, "_simdata.rds"))$true_occ %>%
       bind_rows(readRDS(paste0(here::here("data/nimble/emu_simulated_data"),  ending, "/", low_name, "_", rep, "_", scenario_id, "_simdata.rds"))$true_occ) %>%
@@ -194,13 +194,13 @@ true_occ_paired <- pmap_dfr(sim_data_files %>% select(high_name, rep, low_name, 
       summarize(across(everything(), mean)) %>%
       mutate(rep = rep, high_name = high_name, low_name = low_name, scenario_id = scenario_id, type = type)
 }) %>%
-  mutate(true_perc_change = (t10-t1)/t1) 
+  mutate(true_perc_change = (t10-t1)/t1)
 
 readr::write_csv(true_occ_paired, here::here("data/true_occ_paired_SRM.csv"))
 
 # perc_change power checks
 perc_change_check <- nimble_output %>%
-  left_join(true_occ %>% select(high_name, type, true_perc_change, rep) %>%
+  left_join(true_occ_paired %>% select(high_name, type, true_perc_change, rep) %>%
               mutate(rep = as.integer(rep))) %>%
   # pivot_longer(starts_with("ci"), names_to = "ci_type", values_to = "ci_value") %>%
   # mutate(ci_low = (mean - abs(ci_value)), ci_high = (mean + abs(ci_value))) %>%
