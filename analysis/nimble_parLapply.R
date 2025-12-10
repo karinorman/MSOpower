@@ -205,9 +205,11 @@ perc_change_check <- nimble_output %>%
   # pivot_longer(starts_with("ci"), names_to = "ci_type", values_to = "ci_value") %>%
   # mutate(ci_low = (mean - abs(ci_value)), ci_high = (mean + abs(ci_value))) %>%
   rowwise() %>%
-  mutate(ci_two_tail = between(true_perc_change, ci025, ci97.5) & !between(0,  ci025, ci97.5)) %>%
+  mutate(ci_two_tail = between(true_perc_change, ci025, ci97.5) & !between(0,  ci025, ci97.5),
+         bias = true_perc_change - mean) %>%
   group_by(high_name, type) %>%
   summarize(ci_two_tail = sum(ci_two_tail)/n(),
+            bias = mean(bias),
             rep_count = n()) %>%
   left_join(sim_map_names %>% select(high_name, total_n, psi, phi, p) %>% distinct()) %>%
   group_by(psi, p, phi) %>%
