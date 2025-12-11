@@ -1,4 +1,4 @@
-fit_model_reps <- function(chunk, reps, n_year, n_visit, data, method = c("recursive", "equilibrium", "const_phi"), save_ending = ""){
+fit_model_reps <- function(chunk, reps, n_year, n_visit, data, method = c("recursive", "equilibrium", "const_phi"), path, save_ending = ""){
   
   # get dataframe of scenarios
   map_df <- data %>%
@@ -6,6 +6,9 @@ fit_model_reps <- function(chunk, reps, n_year, n_visit, data, method = c("recur
     select(-chunk_num)
   
   sample_size <- unique(map_df$total_n)
+  
+  # create save out directory
+  dir.create(path)
   
   #### Set up nimble model for that sample size ####
   
@@ -143,8 +146,10 @@ fit_model_reps <- function(chunk, reps, n_year, n_visit, data, method = c("recur
       }
       
       # save data out
-      saveRDS(high_data, paste0(here::here("data/nimble/emu_simulated_data/"), save_ending, "/", high_name, "_", i, "_", scenario_id, "_simdata.rds"))
-      saveRDS(low_data, paste0(here::here("data/nimble/emu_simulated_data/"), save_ending, "/", low_name, "_", i, "_", scenario_id, "_simdata.rds"))
+      dir.create(paste0(path, "/emu_simulated_data", save_ending))
+      
+      saveRDS(high_data, paste0(path, "/emu_simulated_data", save_ending, "/", high_name, "_", i, "_", scenario_id, "_simdata.rds"))
+      saveRDS(low_data, paste0(path, "/emu_simulated_data", save_ending, "/", low_name, "_", i, "_", scenario_id, "_simdata.rds"))
       
       #sample observed occupancy as model input
       sample_occ <- dplyr::bind_rows(sample_data(high_data$obs_occ, high_n),
@@ -184,8 +189,12 @@ fit_model_reps <- function(chunk, reps, n_year, n_visit, data, method = c("recur
         dplyr::mutate(high_name = high_name, rep = i) |>
         tibble::rownames_to_column(var = "parameter")
       
-      readr::write_csv(summary, paste0(here::here("data/nimble/emu_summary/"), save_ending, "/", high_name, "_", i, "_", scenario_id, "_summary.csv"))
-      saveRDS(fit, paste0(here::here("data/nimble/emu_posterior/"), save_ending, "/", high_name, "_", i, "_", scenario_id, "_posterior.rds"))
+      # create save out directories
+      dir.create(paste0(path, "/emu_summary", save_ending))
+      dir.create(paste0(path, "/emu_posterior", save_ending))
+      
+      readr::write_csv(summary, paste0(path, "/emu_summary", save_ending, "/", high_name, "_", i, "_", scenario_id, "_summary.csv"))
+      saveRDS(fit, paste0(path, "/emu_posterior", save_ending, "/", high_name, "_", i, "_", scenario_id, "_posterior.rds"))
     }
   }, year = n_year, visit = n_visit)
 }

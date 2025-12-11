@@ -27,14 +27,12 @@ nyear = 10
 n_vis = 2
 simn = 200
 
+# directory to save outputs to
+path <- here::here("data/nimble/srm_simulations")
+
 ###############################################################
 ################## Recursive Trend Sim ########################
 ###############################################################
-
-# initialize save out directories
-dir.create(here::here("data/nimble/emu_summary"), recursive = TRUE)
-dir.create(here::here("data/nimble/emu_posterior"))
-dir.create(here::here("data/nimble/emu_simulated_data"))
 
 ncores <- 13
 cl <- makeCluster(ncores, type = "PSOCK")
@@ -50,7 +48,7 @@ capture <- clusterEvalQ(cl, {
 chunk_list <- unique(sim_map_names$chunk_num)
 results <- parLapply(cl, chunk_list, fit_model_reps,
        reps = simn, n_year = 10, n_visit = 2, data = sim_map_names,
-       method = "recursive", save_ending = "")
+       method = "recursive", path = path, save_ending = "")
 
 
 # lapply(chunk_list, fit_model_reps,
@@ -61,11 +59,6 @@ results <- parLapply(cl, chunk_list, fit_model_reps,
 #################################################################
 
 path_ending <- "_equil"
-
-# initialize save out directories
-dir.create(paste0(here::here("data/nimble/emu_summary"), path_ending), recursive = TRUE)
-dir.create(paste0(here::here("data/nimble/emu_posterior"), path_ending))
-dir.create(paste0(here::here("data/nimble/emu_simulated_data"), path_ending))
 
 ncores <- 13
 cl <- makeCluster(ncores, type = "PSOCK")
@@ -81,7 +74,7 @@ capture <- clusterEvalQ(cl, {
 chunk_list <- unique(sim_map_names$chunk_num)
 results <- parLapply(cl, chunk_list, fit_model_reps,
                      reps = simn, n_year = 10, n_visit = 2, data = sim_map_names,
-                     method = "equilibrium", save_ending = path_ending)
+                     method = "equilibrium", path = path, save_ending = path_ending)
 
 
 # lapply(chunk_list, fit_model_reps,
@@ -93,11 +86,6 @@ results <- parLapply(cl, chunk_list, fit_model_reps,
 #######################################################################
 
 path_ending <- "_constphi"
-
-# initialize save out directories
-dir.create(paste0(here::here("data/nimble/emu_summary"), path_ending), recursive = TRUE)
-dir.create(paste0(here::here("data/nimble/emu_posterior"), path_ending))
-dir.create(paste0(here::here("data/nimble/emu_simulated_data"), path_ending))
 
 sim_map_constphi <- sim_map_names %>%
   mutate(low_gamma = ((1-perc_red)*low_psi*(1-phi))/(1 - ((1-perc_red)*low_psi)),
@@ -117,7 +105,7 @@ capture <- clusterEvalQ(cl, {
 chunk_list <- unique(sim_map_constphi$chunk_num)
 results <- parLapply(cl, chunk_list, fit_model_reps,
                      reps = simn, n_year = 10, n_visit = 2, data = sim_map_constphi,
-                     method = "const_phi", save_ending = path_ending)
+                     method = "const_phi", path = path, save_ending = path_ending)
 
 
 # lapply(chunk_list, fit_model_reps,
@@ -129,28 +117,28 @@ results <- parLapply(cl, chunk_list, fit_model_reps,
 ###########################################################
 
 # read in estimates
-nimble_output <- purrr::map_dfr(list.files(here::here("data/nimble/emu_summary/"), full.names = TRUE), ~read.csv(.x) %>%
+nimble_output <- purrr::map_dfr(list.files(paste0(path, "/emu_summary/"), full.names = TRUE), ~read.csv(.x) %>%
                                   filter(parameter == "perc_change") %>%
                                   select(mean, ci025 = X2.5., ci97.5 = X97.5., high_name, rep)) %>%
   mutate(type = "recursive") %>%
-  bind_rows(purrr::map_dfr(list.files(here::here("data/nimble/emu_summary_equil/"), full.names = TRUE), ~read.csv(.x) %>%
+  bind_rows(purrr::map_dfr(list.files(paste0(path, "/emu_summary_equil/"), full.names = TRUE), ~read.csv(.x) %>%
                              filter(parameter == "perc_change") %>%
                              select(mean, ci025 = X2.5., ci97.5 = X97.5., high_name, rep)) %>%
               mutate(type = "equilibrium"),
-            purrr::map_dfr(list.files(here::here("data/nimble/emu_summary_constphi/"), full.names = TRUE), ~read.csv(.x) %>%
+            purrr::map_dfr(list.files(paste0(path, "/emu_summary_constphi/"), full.names = TRUE), ~read.csv(.x) %>%
                              filter(parameter == "perc_change") %>%
                              select(mean, ci025 = X2.5., ci97.5 = X97.5., high_name, rep)) %>%
               mutate(type = "constant_phi"))
 
 # get dataframe of sims and reps we've already done
-sim_data_files <- data.frame(files = list.files(here::here("data/nimble/emu_simulated_data/")),
-                         file_paths = list.files(here::here("data/nimble/emu_simulated_data/"), full.names = TRUE)) %>%
+sim_data_files <- data.frame(files = list.files(paste0(path, "/emu_simulated_data/")),
+                         file_paths = list.files(paste0(path, "/emu_simulated_data/"), full.names = TRUE)) %>%
   mutate(type = "recursive", ending = "") %>%
-  bind_rows(data.frame(files = list.files(here::here("data/nimble/emu_simulated_data_equil/")),
-                       file_paths = list.files(here::here("data/nimble/emu_simulated_data_equil/"), full.names = TRUE)) %>%
+  bind_rows(data.frame(files = list.files(paste0(path, "/emu_simulated_data_equil/")),
+                       file_paths = list.files(paste0(path, "/emu_simulated_data_equil/"), full.names = TRUE)) %>%
               mutate(type = "equilibrium", ending = "_equil")) %>%
-  bind_rows(data.frame(files = list.files(here::here("data/nimble/emu_simulated_data_constphi/")),
-                       file_paths = list.files(here::here("data/nimble/emu_simulated_data_constphi/"), full.names = TRUE)) %>%
+  bind_rows(data.frame(files = list.files(paste0(path, "/emu_simulated_data_constphi/")),
+                       file_paths = list.files(paste0(path, "/emu_simulated_data_constphi/"), full.names = TRUE)) %>%
               mutate(type = "constant_phi", ending = "_constphi")) %>%
   separate(files, c("EMU", "sim_id", "rep", "scenario_id")) %>%
   unite("high_name", c("EMU", "sim_id")) %>%
@@ -168,7 +156,7 @@ true_occ_indiv <- pmap_dfr(sim_data_files %>%
                             function(name, rep, scenario_id, type, ending, initial_occ){
 
                               #browser()
-                              readRDS(paste0(here::here("data/nimble/emu_simulated_data"), ending, "/", name, "_", rep, "_", scenario_id, "_simdata.rds"))$true_occ %>%
+                              readRDS(paste0(path, "/emu_simulated_data", ending, "/", name, "_", rep, "_", scenario_id, "_simdata.rds"))$true_occ %>%
                                 select(-site_id) %>%
                                 ungroup() %>%
                                 summarize(across(everything(), mean)) %>%
@@ -187,8 +175,8 @@ true_occ_paired <- pmap_dfr(sim_data_files %>% select(high_name, rep, low_name, 
                                                                          function(high_name, rep, low_name, scenario_id, type, ending){
 
                                                                            #browser()
-    readRDS(paste0(here::here("data/nimble/emu_simulated_data"), ending, "/", high_name, "_", rep, "_", scenario_id, "_simdata.rds"))$true_occ %>%
-      bind_rows(readRDS(paste0(here::here("data/nimble/emu_simulated_data"),  ending, "/", low_name, "_", rep, "_", scenario_id, "_simdata.rds"))$true_occ) %>%
+    readRDS(paste0(path, "/emu_simulated_data", ending, "/", high_name, "_", rep, "_", scenario_id, "_simdata.rds"))$true_occ %>%
+      bind_rows(readRDS(paste0(path, "/emu_simulated_data",  ending, "/", low_name, "_", rep, "_", scenario_id, "_simdata.rds"))$true_occ) %>%
       select(-site_id) %>%
       ungroup() %>%
       summarize(across(everything(), mean)) %>%
