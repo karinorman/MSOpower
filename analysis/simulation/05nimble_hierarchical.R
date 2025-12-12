@@ -11,45 +11,6 @@ library(nimbleEcology)
 library(MCMCvis)
 library(parallel)
 
-
-# real world vegtypes for each emu
-emu_veg <- read.csv(here::here("data/EMU_veg_types.csv")) %>%
-  # let's say which we think has high or low occupancy
-  mutate(occupancy = case_when(
-    veg_type_landfire == "Madrean Lower Montane Pine-Oak Forest and Woodland" ~ "high",
-    veg_type_landfire == "Southern Rocky Mountain Dry-Mesic Montane Mixed Conifer Forest and Woodland" ~ "high",
-    veg_type_landfire == "Southern Rocky Mountain Ponderosa Pine Woodland" ~ "high",
-    veg_type_landfire == "Madrean Upper Montane Conifer-Oak Forest and Woodland" ~ "high",
-    veg_type_landfire == "Rocky Mountain Subalpine Dry-Mesic Spruce-Fir Forest and Woodland" ~ "low",
-    veg_type_landfire == "Rocky Mountain Aspen Forest and Woodland" ~ "low",
-    veg_type_landfire == "Inter-Mountain Basins Aspen-Mixed Conifer Forest and Woodland" ~ "low",
-    veg_type_landfire == "Southern Rocky Mountain Ponderosa Pine Savanna" ~ "low",
-    veg_type_landfire == "Inter-Mountain Basins Subalpine Limber-Bristlecone Pine Woodland" ~ "low",
-    veg_type_landfire == "Rocky Mountain Bigtooth Maple Ravine Woodland" ~ "low",
-    veg_type_landfire == "Rocky Mountain Subalpine Mesic-Wet Spruce-Fir Forest and Woodland" ~ "low",
-    veg_type_landfire == "Rocky Mountain Subalpine-Montane Riparian Woodland" ~ "low",
-    veg_type_landfire == "Rocky Mountain Lodgepole Pine Forest" ~ "low",
-    veg_type_landfire == "Rocky Mountain Subalpine-Montane Limber-Bristlecone Pine Woodland" ~ "low",
-    veg_type_landfire == "Rocky Mountain Lodgepole Pine Forest" ~ "low",
-    veg_type_landfire == "Rocky Mountain Subalpine-Montane Limber-Bristlecone Pine Woodland" ~ "low",
-    veg_type_landfire == "Southern Rocky Mountain Mesic Montane Mixed Conifer Forest and Woodland" ~ "high",
-    veg_type_landfire == "Madrean Pinyon-Juniper Woodland" ~ "low",
-    .default = NA
-  ))
-
-emu_ratio <- emu_veg %>%
-  group_by(UNIT, occupancy) %>%
-  summarize(hex_count = sum(hex_num)) %>%
-  mutate(emu = case_when(
-    UNIT == "Basin & Range - East" ~ "BRE",
-    UNIT == "Basin & Range - West" ~ "BRW",
-    UNIT == "Colorado Plateau" ~ "CP",
-    UNIT == "Southern Rocky Mountains" ~ "SRM",
-    UNIT == "Upper Gila Mountains" ~ "UGM"
-  )) %>%
-  ungroup()
-
-
 ###########################################
 ######## Define simulation parameters #####
 ###########################################
@@ -59,71 +20,7 @@ nyear = 10
 n_sites = sum(emu_veg$hex_num)
 n_vis = 2
 
-### Parameters ###
-
-# get dataframe of all possible scenarios
-sim_scenarios <- data.frame(
-  # these are the parameters that change, taken directly from Woods 2019
-  psi = c(0.03, 0.43, 0.6), phi = c(.6, .8, .8), p = c(0.4, 0.8, .8)) %>%
-  # get all possible combinations
-  tidyr::expand(psi, phi,p) %>%
-  # and give each unique combination an ID
-  mutate(sim_num = row_number(),
-         occupancy = ifelse(psi == 0.03, "low", "high")) %>%
-  # these are the same for all scenarios right now, sd's from Wood 2019, psi1_low kinda made up
-  mutate(sd_phi = 0.04, sd_gamma = 0.01, perc_red = 0.25)
-
-high_hex_count <- emu_ratio %>% filter(occupancy == "high") %>% pull(hex_count) %>% sum()
-#sample_sizes <- seq(log(100), log(3000), by = 0.3) %>% exp() %>% round()
-sample_sizes <- seq(log(100), log(high_hex_count/2), by = 0.5) %>% exp() %>% round()
-
-# get scenarios, one for each emu
-sim_scenarios_emu <- bind_rows(sim_scenarios %>% mutate(emu = "BRE"),
-                               sim_scenarios %>% mutate(emu = "BRW"),
-                               sim_scenarios %>% mutate(emu = "CP"),
-                               sim_scenarios %>% mutate(emu = "SRM"),
-                               sim_scenarios %>% mutate(emu = "UGM")) %>%
-  # get sample sizes for low and high occupancy for each emu
-  left_join(emu_ratio %>%
-              select(emu, occupancy, hex_count)) %>%
-  # tidyr::pivot_wider(names_from = occupancy, values_from = hex_count) %>%
-  # rename(low_n = low, high_n = high)) %>%
-  # get the columns in the right order
-  select(sim_num, emu, psi, phi, sd_phi, sd_gamma, p, n = hex_count, perc_red) %>%
-  filter(!is.na(n)) %>%
-  group_by(emu, sim_num) %>%
-  slice(rep(row_number(), length(sample_sizes))) %>% mutate(total_samp = sample_sizes) %>%
-  group_by(emu) %>%
-  mutate(sim_num = row_number()) %>%
-  unite("sim_id", emu, sim_num)
-
-# let's figure out relative area of each emu and total area
-# emu_ratio %>%
-#   filter(occupancy == "high") %>%
-#   select(emu, hex_count) %>%
-#   mutate(total_hex = sum(hex_count)) %>%
-#   mutate(proportion = hex_count/total_hex)
-
-# map high occupancy sims to their low occupancy counterpart
-# set seed for random seed generator
-set.seed(524879)
-sim_map <- sim_scenarios_emu %>%
-  #select(sim_id, psi, phi, p, total_samp) %>%
-  filter(psi != 0.03) %>%
-  separate(sim_id, c("emu"), sep = "_", remove = FALSE) %>%
-  rename(high_name = sim_id, high_hex_count = n) %>%
-  left_join(sim_scenarios_emu %>%
-              select(sim_id, psi, phi, p, total_samp,low_hex_count = n) %>%
-              filter(psi == 0.03) %>%
-              separate(sim_id, c("emu"), sep = "_", remove = FALSE) %>%
-              select(-psi) %>%
-              rename(low_name = sim_id), by = c("emu", "total_samp", "phi", "p")) %>%
-  group_by(phi, p, psi, total_samp) %>%
-  mutate(scenario_id = cur_group_id(),
-         seed = (1 + floor(runif(1) * 100000))) %>%
-  ungroup() %>%
-  mutate(high_n = round(total_samp*0.75), low_n = round(total_samp*0.25),
-         low_psi = 0.03)
+load("data/sim_map_names.rda")
 
 ##############################################
 ########### Model and Power check ############
