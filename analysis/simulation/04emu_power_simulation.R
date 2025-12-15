@@ -18,9 +18,6 @@ source(here::here("R/fit_model_reps.R"))
 
 load(here::here("data/sim_map_names.rda"))
 
-# Get scenario mapping for all EMU's
-sim_map_names <- sim_map_names 
-
 ## Fixed study characteristics
 nyear = 10
 n_vis = 2
@@ -49,4 +46,57 @@ chunk_list <- unique(sim_map_names$chunk_num)
 results <- parLapply(cl, chunk_list, fit_model_reps,
                      reps = simn, n_year = 10, n_visit = 2, data = sim_map_names,
                      method = "recursive", path = path, save_ending = "")
+
+
+###########################################################
+################## Processing runs ########################
+###########################################################
+
+nimble_output <- purrr::map_dfr(list.files(paste0(path, "/emu_summary/"), full.names = TRUE), ~read.csv(.x) %>%
+                                  filter(parameter == "perc_change") %>%
+                                  select(mean, ci025 = X2.5., ci97.5 = X97.5., high_name, rep))
+
+# get dataframe of sims and reps we've already done
+sim_data_files <- data.frame(files = list.files(paste0(path, "/emu_simulated_data/")),
+                             file_paths = list.files(paste0(path, "/emu_simulated_data/"), full.names = TRUE)) %>%
+  separate(files, c("EMU", "sim_id", "rep", "scenario_id")) %>%
+  unite("high_name", c("EMU", "sim_id")) %>%
+  mutate(scenario_id = as.integer(scenario_id)) %>%
+  left_join(sim_map_names %>% select(high_name, low_name, scenario_id)) %>%
+  filter(!is.na(low_name)) %>%
+  select(-file_paths)
+
+# get true occurrence at the scenario level (paired high and low)
+true_occ_paired <- pmap_dfr(sim_data_files %>% select(high_name, rep, low_name, scenario_id),
+                            function(high_name, rep, low_name, scenario_id){
+                              
+                              #browser()
+                              readRDS(paste0(path, "/emu_simulated_data", "/", high_name, "_", rep, "_", scenario_id, "_simdata.rds"))$true_occ %>%
+                                bind_rows(readRDS(paste0(path, "/emu_simulated_data", "/", low_name, "_", rep, "_", scenario_id, "_simdata.rds"))$true_occ) %>%
+                                select(-site_id) %>%
+                                ungroup() %>%
+                                summarize(across(everything(), mean)) %>%
+                                mutate(rep = rep, high_name = high_name, low_name = low_name, scenario_id = scenario_id)
+                            }) %>%
+  mutate(true_perc_change = (t10-t1)/t1)
+
+readr::write_csv(true_occ_paired, here::here("data/true_occ_paired_emu.csv"))
+
+# perc_change power checks
+perc_change_check <- nimble_output %>%
+  left_join(true_occ_paired %>% select(high_name, true_perc_change, rep) %>%
+              mutate(rep = as.integer(rep))) %>%
+  rowwise() %>%
+  mutate(ci_two_tail = between(true_perc_change, ci025, ci97.5) & !between(0,  ci025, ci97.5),
+         bias = true_perc_change - mean) %>%
+  group_by(high_name) %>%
+  summarize(ci_two_tail = sum(ci_two_tail)/n(),
+            bias = mean(bias),
+            rep_count = n()) %>%
+  left_join(sim_map_names %>% select(high_name, total_n, psi, phi, p) %>% distinct()) %>%
+  group_by(psi, p, phi) %>%
+  mutate(line_id = cur_group_id()) %>%
+  separate(high_name, c("emu", "sim_num"), sep = "_", remove = FALSE)
+
+readr::write_csv(perc_change_check, here::here("data/nimble_power_check_emu.csv"))
 
