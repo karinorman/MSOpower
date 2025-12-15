@@ -66,11 +66,11 @@ hier_power_plt <- purrr::pmap(ci_plotting_df, ~hier_plot_df %>%
 
 ### EMU Power ###
 
-power_eval <- read.csv(here::here("data/power_eval.csv"))
 
-power_plt <- purrr::pmap(ci_plotting_df, ~power_eval %>%
-                           filter(total_n < 1200) %>%
-  select(-sim_id) %>%
+power_eval <- read.csv(here::here("data/nimble_power_check_emu.csv"))
+
+power_plt <- power_eval %>%
+  #filter(total_n < 1200) %>%
   left_join(sim_scenarios_table, by = c("phi", "p", "psi" = "psi_high")) %>%
   mutate(sim_type = paste0(simulation_scenario, ":  \u03A8 = ", psi, ", \u03C6 = ", phi, ", p = ", p)) %>%
   mutate(unit = case_when(
@@ -80,8 +80,7 @@ power_plt <- purrr::pmap(ci_plotting_df, ~power_eval %>%
     emu == "SRM" ~ "Southern Rocky Mountains",
     emu == "UGM" ~ "Upper Gila Mountains"
   )) %>%
-  filter(CI_type == .x) %>%
-  ggplot(aes(x = total_n, y = !! rlang::sym(.y))) +
+  ggplot(aes(x = total_n, y = ci_two_tail)) +
   geom_line(aes(color = sim_type, linetype = sim_type), linewidth = 0.75) +
   facet_wrap(~unit, scales = "free_x") +
   theme_classic() +
@@ -96,26 +95,26 @@ power_plt <- purrr::pmap(ci_plotting_df, ~power_eval %>%
         panel.spacing = unit(30, "pt"),
         axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
         axis.title.x = element_text(margin = margin(t = 20, r = 0, b = 0, l = 0))
-        ) +
+  ) +
   guides(linetype = guide_legend(override.aes = list(linewidth = 1))# byrow = TRUE),
          #color = guide_legend(byrow = TRUE)
-         ) +
+  ) +
   ylab("Percent Success") +
   xlab("Sample Size")
-)
 
 #ggsave(here::here("figures/power_plot.jpeg"), power_plt)
 
-power_join <- power_plt[[1]] + plot_spacer() +
+power_join <- power_plt + plot_spacer() +
   (plot_spacer() + hier_power_plt + plot_spacer() + plot_layout(ncol = 1, heights = c(0.5,2,0.5))) +
   plot_layout(nrow = 1, widths = c(2, 0.15, 1))
 
 ggsave(here::here("figures/power_plot_join.jpeg"), power_join, width = 23, height = 11.5)
 
-# get plots for different kinds of power checks
-ggsave(here::here("figures/power_check_twotail.png"), power_plt[[1]], width = 16.5, height = 9.87)
-ggsave(here::here("figures/power_check_lefttail.png"), power_plt[[2]], width = 16.5, height = 9.87)
-ggsave(here::here("figures/power_check_negative.png"), power_plt[[3]], width = 16.5, height = 9.87)
+# # get plots for different kinds of power checks
+# ggsave(here::here("figures/power_check_twotail.png"), power_plt[[1]], width = 16.5, height = 9.87)
+# ggsave(here::here("figures/power_check_lefttail.png"), power_plt[[2]], width = 16.5, height = 9.87)
+# ggsave(here::here("figures/power_check_negative.png"), power_plt[[3]], width = 16.5, height = 9.87)
+
 
 ################################
 #### Separate by detection #####
