@@ -66,6 +66,38 @@ sim_data_files <- data.frame(files = list.files(paste0(path, "/emu_simulated_dat
   filter(!is.na(low_name)) %>%
   select(-file_paths)
 
+# are any scenarios missing?
+# get scenarios for which we didn't get all the reps
+missing_scenarios <- sim_data_files %>% 
+  group_by(high_name, scenario_id) %>% 
+  summarize(reps = n_distinct(rep)) %>%
+  select(-scenario_id) %>%
+  filter(reps == 200) %>%
+  mutate(complete = "yes") %>%
+  right_join(sim_map_names) %>%
+  filter(is.na(complete)) %>%
+  select(-c(complete, reps))
+
+# Let's do the missing ones
+
+ncores <- 12
+cl <- makeCluster(ncores, type = "PSOCK")
+clusterExport(cl, c('init_model', 'missing_scenarios', 'sim_dataset', 'sample_data'))
+capture <- clusterEvalQ(cl, {
+  library(nimbleEcology)
+  library(magrittr)
+  library(purrr)
+  library(dplyr)
+})
+
+
+chunk_list <- unique(missing_scenarios$chunk_num)
+results <- parLapply(cl, chunk_list, fit_model_reps,
+                     reps = simn, n_year = 10, n_visit = 2, data = missing_scenarios,
+                     method = "recursive", path = path, save_ending = "")
+
+
+
 # get true occurrence at the scenario level (paired high and low)
 true_occ_paired <- pmap_dfr(sim_data_files %>% select(high_name, rep, low_name, scenario_id),
                             function(high_name, rep, low_name, scenario_id){
