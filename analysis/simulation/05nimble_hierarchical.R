@@ -4,12 +4,11 @@
 
 library(dplyr)
 library(tidyr)
-library(purrr)
-library(furrr)
 library(nimble)
 library(nimbleEcology)
 library(MCMCvis)
 library(parallel)
+library(purrr)
 
 ###########################################
 ######## Define simulation parameters #####
@@ -20,7 +19,7 @@ nyear = 10
 n_vis = 2
 simn = 200
 
-load("data/sim_map_names.rda")
+load("data/sim_map_hier.rda")
 
 # directory to save outputs to
 path <- here::here("data/nimble/hierarchical_simulations")
@@ -43,12 +42,14 @@ capture <- clusterEvalQ(cl, {
 })
 
 
-chunk_list <- unique(sim_map$scenario_id)
+chunk_list <- unique(sim_map_hier$scenario_id)
 results <- parLapply(cl, chunk_list, fit_model_reps,
-                     reps = simn, n_year = 10, n_visit = 2)
+                     reps = simn, n_year = 10, n_visit = 2,
+                     data = sim_map_hier)
 
-lapply(chunk_list, fit_model_reps,
-       reps = 100, n_year = 10, n_visit = 2)
+lapply(chunk_list, fit_model_reps_hier,
+       reps = 100, n_year = 10, n_visit = 2,
+       data = sim_map_hier)
 
 ###########################################################
 ################## Processing runs ########################
