@@ -1,12 +1,12 @@
 
-fit_model_reps_hier <- function(chunk, reps, n_year, n_visit){
+fit_model_reps_hier <- function(chunk, reps, n_year, n_visit, data){
 
   # get dataframe of scenarios
-  map_df <- sim_map %>%
+  map_df <- data %>%
     dplyr::filter(scenario_id == chunk) %>%
     select(-scenario_id)
 
-  sample_size <- unique(map_df$total_samp)
+  sample_size <- unique(map_df$total_n)
   high_n <- unique(map_df$high_n)
   low_n <- unique(map_df$low_n)
 
@@ -41,7 +41,8 @@ fit_model_reps_hier <- function(chunk, reps, n_year, n_visit){
     for (i in 1:(nseason-1)){
       persist_int[i] ~ dunif(0,1)
       for (j in 1:nsite){
-        logit(persist[j, i]) <- logit(persist_int[i]) + ranef[EMU[j]]
+        logit(persist[j, i]) <- logit(persist_int[i]) + logit(beta) * i + ranef[EMU[j]]
+        #logit(persist[j, i]) <- logit(persist_int[i]) + ranef[EMU[j]]
       }
     }
 
@@ -50,6 +51,7 @@ fit_model_reps_hier <- function(chunk, reps, n_year, n_visit){
       ranef[r] ~ dnorm(0, sd = sigma_ranef)
     }
 
+    beta ~ dunif(0,1)
     colonize ~ dunif(0,1)
     init_occ ~ dunif(0,1)
     detect ~ dunif(0,1)
@@ -75,7 +77,7 @@ fit_model_reps_hier <- function(chunk, reps, n_year, n_visit){
 
   for (i in 1:reps){
     # get high data
-    high_data <- purrr::pmap_dfr(map_df %>% select(-c(high_n, low_n)), function(high_name, emu, psi, phi, sd_phi, sd_gamma, p, high_hex_count, perc_red, total_samp, low_name,
+    high_data <- purrr::pmap_dfr(map_df %>% select(-c(high_n, low_n)), function(high_name, emu, psi, phi, sd_phi, sd_gamma, p, high_hex_count, perc_red, total_n, low_name,
                                                                                 low_hex_count, low_psi, seed, year, visit){
 
       high_data <- sim_dataset(psi = psi, phi = phi, sd_phi = sd_phi, sd_gamma = sd_gamma, p = p,
@@ -90,7 +92,7 @@ fit_model_reps_hier <- function(chunk, reps, n_year, n_visit){
     }, year = n_year, visit = n_visit)
 
     # get low data
-    low_data <- purrr::pmap_dfr(map_df %>% select(-c(high_n, low_n)), function(high_name, emu, psi, phi, sd_phi, sd_gamma, p, high_hex_count, perc_red, total_samp, low_name,
+    low_data <- purrr::pmap_dfr(map_df %>% select(-c(high_n, low_n)), function(high_name, emu, psi, phi, sd_phi, sd_gamma, p, high_hex_count, perc_red, total_n, low_name,
                                                                                low_hex_count, low_psi, seed, year, visit){
 
       low_data <- sim_dataset(psi = low_psi, phi = phi, sd_phi = sd_phi, sd_gamma = sd_gamma, p = p,
@@ -123,6 +125,7 @@ fit_model_reps_hier <- function(chunk, reps, n_year, n_visit){
 
     # list of new initialized variables
     new_inits <-  list(
+      beta = 0.5,
       colonize = 0.5,
       init_occ = 0.5,
       detect = 0.5,
@@ -139,15 +142,15 @@ fit_model_reps_hier <- function(chunk, reps, n_year, n_visit){
                            inits = new_inits)
 
     summary <- MCMCvis::MCMCsummary(fit, probs = c(0.025, 0.5, 0.95, 0.975)) |>
-      dplyr::mutate(scenario_id = chunk, high_name = high_name, rep = i) |>
+      dplyr::mutate(scenario_id = chunk, rep = i) |>
       tibble::rownames_to_column(var = "parameter")
 
     # create save out directories
     dir.create(paste0(path, "/hier_summary"))
     dir.create(paste0(path, "/hier_posterior"))
 
-    readr::write_csv(summary, paste0(path, "/hier_summary/"), high_name, "_", i, "_", chunk, "_summary.csv"))
-    saveRDS(fit, paste0((path, "/hier_posterior/"), high_name, "_", i, "_", chunk, "_posterior.rds"))
+    readr::write_csv(summary, paste0(path, "/hier_summary/", i, "_", chunk, "_summary.csv"))
+    saveRDS(fit, paste0(path, "/hier_posterior/", i, "_", chunk, "_posterior.rds"))
   }
 }
 
@@ -177,6 +180,7 @@ init_model <- function(n, year, visit, emu_vec, model_obj){
     ),
     data = list(y = obs_occ_init),
     inits = list(
+      beta = 0.5,
       colonize = 0.5,
       init_occ = 0.5,
       detect = 0.5,
