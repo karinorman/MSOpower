@@ -131,7 +131,8 @@ trend_gen_df <- indv_srm_true_occ %>%
   summarize(mean_occ = mean(occupancy), mean_perc_change = mean(true_perc_change),
             lower = mean(occupancy) - qt(1- 0.05/2, (n() - 1))*sd(occupancy)/sqrt(n()),
             upper = mean(occupancy) + qt(1- 0.05/2, (n() - 1))*sd(occupancy)/sqrt(n())) %>%
-  mutate(time = as.integer(unlist(stringr::str_extract_all(time, "[0-9]+"))))
+  mutate(time = as.integer(unlist(stringr::str_extract_all(time, "[0-9]+"))),
+         type = ifelse(type == "constant_phi", "constant survival", type))
 
 
 

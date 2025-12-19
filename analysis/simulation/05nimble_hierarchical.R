@@ -4,12 +4,11 @@
 
 library(dplyr)
 library(tidyr)
-library(purrr)
-library(furrr)
 library(nimble)
 library(nimbleEcology)
 library(MCMCvis)
 library(parallel)
+library(purrr)
 
 ###########################################
 ######## Define simulation parameters #####
@@ -17,222 +16,24 @@ library(parallel)
 
 ## Fixed study characteristics
 nyear = 10
-n_sites = sum(emu_veg$hex_num)
 n_vis = 2
+simn = 200
 
-load("data/sim_map_names.rda")
+load("data/sim_map_hier.rda")
+
+# directory to save outputs to
+path <- here::here("data/nimble/hierarchical_simulations")
 
 ##############################################
 ########### Model and Power check ############
 ##############################################
 
 source(here::here("R/sim_dataset.R"))
-
-# function to initialize a model object for a given sample size
-init_model <- function(n, year, visit, emu_vec, model_obj){
-
-  nsite <- n
-  nseason <- year
-  nrep <- visit
-
-  # make observed occurrence an array with site x year(season) x visit(rep)
-  obs_occ_init <- array(sample(c(0,1), (nsite * nseason * nrep), replace = TRUE), c(nsite, nseason, nrep))
-
-  # Build the model
-  mod <- nimble::nimbleModel(
-    code = model_obj,
-    constants = list(nsite = n, nrep = nrep, nseason = nseason,
-                     start_indexes = rep(1, nseason),
-                     end_indexes = rep(nrep, nseason),
-                     num_EMU = n_distinct(emu_vec)
-    ),
-    data = list(y = obs_occ_init),
-    inits = list(
-      colonize = 0.5,
-      init_occ = 0.5,
-      detect = 0.5,
-      persist_int = rep(0.5, (nseason-1)),
-      ranef = rep(0, n_distinct(emu_vec)),
-      sigma_ranef = 1,
-      EMU = sample(emu_vec, nsite, replace = TRUE)
-    )
-  )
-
-  # shouldn't NA, infinite, or positive (that's a dist issue)
-  #Non-NA means we're fully initialized
-  if (!is.finite(mod$calculate())){
-    stop("Model did not initialize properly.")
-  }
-
-  # Build an MCMC
-  conf <- nimble::configureMCMC(mod)
-  conf$addMonitors(c("psi", "perc_change", "ranef"))
-  mcmc <- nimble::buildMCMC(conf)
-
-  # Compile
-  complist <- nimble::compileNimble(mod, mcmc)
-
-  return(complist)
-}
-
-sample_data <- function(data, sample_size){
-  data_ids <- unique(data$site_id)
-  samp_data <- data %>%
-    filter(site_id %in% sample(data_ids, sample_size, replace = FALSE))
-}
-
-
-# let's start at the bottom
-# sampled data needs to be all sampled data for that EMU and sample size (multiple scenarios)
-fit_model_reps <- function(chunk, reps, n_year, n_visit){
-
-  # get dataframe of scenarios
-  map_df <- sim_map %>%
-    dplyr::filter(scenario_id == chunk) %>%
-    select(-scenario_id)
-
-  sample_size <- unique(map_df$total_samp)
-  high_n <- unique(map_df$high_n)
-  low_n <- unique(map_df$low_n)
-
-  #### Set up nimble model for that sample size ####
-
-  # Model code for single EMU year estimate
-  dynoccmod_code <- nimble::nimbleCode({
-
-    # The whole likelihood for the dynamic occupancy model is contained inside
-    # dDynOcc_sss. The suffix _sss indicates that persistence, colonization, and
-    # detection are provided as scalars (one value for the whole site's
-    # detection history). Other variants exist with suffixes like _svm (which
-    # would mean that persistence is (s)calar, colonization is a (v)ector
-    # varying with season, and detection is a (m)atrix varying with season and
-    # with replicate)
-
-    for (i in 1:nsite) {
-      y[i, 1:nseason, 1:nrep] ~ dDynOcc_vss(probPersist = persist[i, 1:(nseason-1)],
-                                            probColonize = colonize,
-                                            init = init_occ,
-                                            p = detect,
-                                            start = start_indexes[1:nseason], # Start and end arguments allow you to provide ragged mtx data
-                                            end = end_indexes[1:nseason])
-
-
-    }
-
-    # Define Priors
-    for (i in 1:(nseason-1)){
-      persist_int[i] ~ dunif(0,1)
-      for (j in 1:nsite){
-        logit(persist[j, i]) <- logit(persist_int[i]) + ranef[EMU[j]]
-      }
-    }
-
-    for (r in 1:num_EMU) {
-      # do sd = so life isn't ruined (might think its precision)
-      ranef[r] ~ dnorm(0, sd = sigma_ranef)
-    }
-
-    colonize ~ dunif(0,1)
-    init_occ ~ dunif(0,1)
-    detect ~ dunif(0,1)
-    sigma_ranef ~ dunif(0, 10)
-
-    # Derive posterior for year
-    psi[1] <-  init_occ
-    for (i in 2:nseason){
-      # gives the estimate for year based on mean persistance (not a level of random effect)
-      psi[i] <- psi[i-1]*(persist_int[i-1]) + (1-psi[i-1])*colonize
-    }
-    perc_change <- (psi[10] - psi[1])/psi[1]
-  })
-
-  # create template model that can be updated with data
-  compile_model <- init_model(n = sample_size, year = n_year, visit = n_visit, emu_vec = 1:n_distinct(map_df$emu), model_obj = dynoccmod_code)
-
-  set.seed(unique(map_df$seed))
-  # for reach replicate, generate high and low data, and fit model
-  for (i in 1:reps){
-    # get high data
-    high_data <- purrr::pmap_dfr(map_df %>% select(-c(high_n, low_n)), function(high_name, emu, psi, phi, sd_phi, sd_gamma, p, high_hex_count, perc_red, total_samp, low_name,
-                                 low_hex_count, low_psi, seed, year, visit){
-
-      high_data <- sim_dataset(psi = psi, phi = phi, sd_phi = sd_phi, sd_gamma = sd_gamma, p = p,
-                               n_sites = high_hex_count, perc_red = perc_red, nyear = year, n_vis = visit) %>%
-        append(c("sim_id" = high_name, "rep" = i, scenario_id = chunk))
-
-      saveRDS(high_data, paste0(here::here("data/nimble/hier_simulated_data/"), "/", high_name, "_", i, "_", chunk, "_simdata.rds"))
-
-      return(high_data$obs_occ %>% mutate(emu = emu, landtype = "high") %>%
-               # get unique site id across emu's
-               mutate(site_id = paste0(emu, site_id)))
-    }, year = n_year, visit = n_visit)
-
-    # get low data
-    low_data <- purrr::pmap_dfr(map_df %>% select(-c(high_n, low_n)), function(high_name, emu, psi, phi, sd_phi, sd_gamma, p, high_hex_count, perc_red, total_samp, low_name,
-                                 low_hex_count, low_psi, seed, year, visit){
-
-      low_data <- sim_dataset(psi = low_psi, phi = phi, sd_phi = sd_phi, sd_gamma = sd_gamma, p = p,
-                              n_sites = low_hex_count, perc_red = perc_red, nyear = year, n_vis = visit) %>%
-        append(c("sim_id" = low_name, "rep" = i))
-
-      saveRDS(low_data, paste0(here::here("data/nimble/hier_simulated_data/"), "/", low_name, "_", i, "_", chunk, "_simdata.rds"))
-
-      return(low_data$obs_occ %>% mutate(emu = emu, landtype = "low") %>%
-               # get unique site id across emu's
-               mutate(site_id = paste0(emu, site_id)))
-    }, year = n_year, visit = n_visit)
-
-    # sample observed occupancy
-    occ_data <- bind_rows(sample_data(high_data, high_n),
-                          sample_data(low_data, low_n)) %>%
-      # enforce that visits are ordered as that emu vec is same across visits
-      dplyr::arrange(visit, emu)
-
-    occ_array <- occ_data %>%
-      dplyr::select(-c(site_id, emu, landtype)) %>%
-      split(occ_data$visit) %>%
-      purrr::map( ~ .x |> dplyr::select(-visit) |> as.matrix()) %>%
-      simplify2array()
-
-    emu_var <-  occ_data %>%
-      filter(visit == 1) %>%
-      mutate(emu_num = as.numeric(as.factor(emu))) %>%
-      pull(emu_num)
-
-    # list of new initialized variables
-    new_inits <-  list(
-      colonize = 0.5,
-      init_occ = 0.5,
-      detect = 0.5,
-      persist_int = rep(0.5, (n_year-1)),
-      ranef = rep(0, n_distinct(emu_var)),
-      sigma_ranef = 1,
-      EMU = emu_var)
-
-    # update model with data
-    compile_model$mod$y <- occ_array
-    #compile_model$setData("y")
-    fit <- nimble::runMCMC(compile_model$mcmc, niter = 1000, nchains = 2, nburnin = 500,
-                           samplesAsCodaMCMC = TRUE,
-                           inits = new_inits)
-
-    summary <- MCMCvis::MCMCsummary(fit, probs = c(0.025, 0.5, 0.95, 0.975)) |>
-      dplyr::mutate(scenario_id = chunk, high_name = high_name, rep = i) |>
-      tibble::rownames_to_column(var = "parameter")
-
-    readr::write_csv(summary, paste0(here::here("data/nimble/hier_summary/"), "/", high_name, "_", i, "_", chunk, "_summary.csv"))
-    saveRDS(fit, paste0(here::here("data/nimble/hier_posterior/"), "/", high_name, "_", i, "_", chunk, "_posterior.rds"))
-  }
-}
-
-# initialize save out directories
-dir.create(here::here("data/nimble/hier_summary"), recursive = TRUE)
-dir.create(here::here("data/nimble/hier_posterior"))
-dir.create(here::here("data/nimble/hier_simulated_data"))
+source(here::here("R/fit_model_reps_hier.R"))
 
 ncores <- 55
 cl <- makeCluster(ncores, type = "PSOCK")
-clusterExport(cl, c('init_model', 'sim_map', 'sim_dataset', 'sample_data'))
+clusterExport(cl, c('init_model', 'sim_map_names', 'sim_dataset', 'sample_data'))
 capture <- clusterEvalQ(cl, {
   library(nimbleEcology)
   library(magrittr)
@@ -240,35 +41,36 @@ capture <- clusterEvalQ(cl, {
   library(dplyr)
 })
 
-simn = 200
 
-chunk_list <- unique(sim_map$scenario_id)
+chunk_list <- unique(sim_map_hier$scenario_id)
 results <- parLapply(cl, chunk_list, fit_model_reps,
-                     reps = simn, n_year = 10, n_visit = 2)
+                     reps = simn, n_year = 10, n_visit = 2,
+                     data = sim_map_hier)
 
-lapply(chunk_list, fit_model_reps,
-       reps = 100, n_year = 10, n_visit = 2)
+lapply(chunk_list, fit_model_reps_hier,
+       reps = 100, n_year = 10, n_visit = 2,
+       data = sim_map_hier)
 
 ###########################################################
 ################## Processing runs ########################
 ###########################################################
 
 # read in estimates
-output_files <- data.frame(files = list.files(here::here("data/nimble/hier_summary/")), 
+output_files <- data.frame(files = list.files(here::here("data/nimble/hier_summary/")),
                            file_paths = list.files(here::here("data/nimble/hier_summary/"), full.names = TRUE)) %>%
   separate(files, c("EMU", "sim_id", "rep", "scenario_id")) %>%
   select(EMU, file_paths)
-  
-  
+
+
 nimble_output <- purrr::pmap_dfr(output_files, function(EMU, file_paths) {
-  read.csv(file_paths) %>% 
+  read.csv(file_paths) %>%
     filter(parameter == "perc_change") %>%
     select(mean, ci025 = X2.5., ci97.5 = X97.5., scenario_id, rep) %>%
     mutate(emu = EMU)
   })
 
 # get dataframe of sims and reps we've already done
-high_data_files <- data.frame(files = list.files(here::here("data/nimble/hier_simulated_data/")), 
+high_data_files <- data.frame(files = list.files(here::here("data/nimble/hier_simulated_data/")),
                              file_paths = list.files(here::here("data/nimble/hier_simulated_data/"), full.names = TRUE)) %>%
   separate(files, c("EMU", "sim_id", "rep", "scenario_id")) %>%
   unite("high_name", c("EMU", "sim_id")) %>%
@@ -278,7 +80,7 @@ high_data_files <- data.frame(files = list.files(here::here("data/nimble/hier_si
   filter(!is.na(low_name)) %>%
   select(-file_paths)
 
-low_data_files <- data.frame(files = list.files(here::here("data/nimble/hier_simulated_data/")), 
+low_data_files <- data.frame(files = list.files(here::here("data/nimble/hier_simulated_data/")),
                               file_paths = list.files(here::here("data/nimble/hier_simulated_data/"), full.names = TRUE)) %>%
   separate(files, c("EMU", "sim_id", "rep", "scenario_id")) %>%
   unite("low_name", c("EMU", "sim_id")) %>%
@@ -293,7 +95,7 @@ sim_data_files <- full_join(high_data_files, low_data_files) %>%
 
 # get true occupancy
 true_occ <- pmap_dfr(sim_data_files %>% select(high_name, rep, low_name, scenario_id), function(high_name, rep, low_name, scenario_id){
-  
+
   readRDS(paste0(here::here("data/nimble/hier_simulated_data/"), "/", high_name, "_", rep, "_", scenario_id, "_simdata.rds"))$true_occ %>%
     bind_rows(readRDS(paste0(here::here("data/nimble/hier_simulated_data/"), "/", low_name, "_", rep, "_", scenario_id, "_simdata.rds"))$true_occ) %>%
     select(-site_id) %>%

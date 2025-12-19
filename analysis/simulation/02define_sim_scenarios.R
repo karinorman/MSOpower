@@ -45,9 +45,9 @@ emu_ratio <- emu_veg %>%
   ungroup()
 
 
-###########################################
-######## Define simulation parameters #####
-###########################################
+########################################################
+######## Define simulation parameters for EMU Sims #####
+########################################################
 
 ## Fixed study characteristics
 nyear = 10
@@ -79,7 +79,7 @@ sim_scenarios_emu <- bind_rows(sim_scenarios %>% mutate(emu = "BRE"),
   # tidyr::pivot_wider(names_from = occupancy, values_from = hex_count) %>%
   # rename(low_n = low, high_n = high)) %>%
   # get the columns in the right order
-  select(emu, psi, phi, sd_phi, sd_gamma, p, perc_red) 
+  select(emu, psi, phi, sd_phi, sd_gamma, p, perc_red)
 
 samp_size_df <- data.frame(total_n = c(20, 40, 60, 100, 160, 200, 300, 420, 560, 700, 1000, 1500, 2000)) %>%
   mutate(high_n = 0.75*total_n, low_n = 0.25*total_n) %>%
@@ -91,7 +91,7 @@ samp_size_df <- data.frame(total_n = c(20, 40, 60, 100, 160, 200, 300, 420, 560,
   left_join(emu_ratio %>% filter(occupancy == "low") %>% select(emu, low_hex_count = hex_count) %>% distinct()) %>%
   filter(high_hex_count > high_n, low_hex_count > low_n) %>%
   # add back in highest sample size allowed by available high occupancy hex area for BRE and BRW %>%
-  bind_rows(data.frame(emu = c("BRE", "BRW"), 
+  bind_rows(data.frame(emu = c("BRE", "BRW"),
              high_n = c(744, 370)
              )) %>%
   ungroup() %>%
@@ -129,3 +129,69 @@ sim_map_names <- emu_scenarios_samp %>%
   ungroup()
 
 usethis::use_data(sim_map_names)
+
+
+#################################################################
+######## Define simulation parameters for Hierarchical Sims #####
+#################################################################
+
+# get dataframe of all possible scenarios
+sim_scenarios <- data.frame(
+  # these are the parameters that change, taken directly from Woods 2019
+  psi = c(0.03, 0.43, 0.6), phi = c(.6, .8, .8), p = c(0.4, 0.8, .8)) %>%
+  # get all possible combinations
+  tidyr::expand(psi, phi,p) %>%
+  # and give each unique combination an ID
+  mutate(sim_num = row_number(),
+         occupancy = ifelse(psi == 0.03, "low", "high")) %>%
+  # these are the same for all scenarios right now, sd's from Wood 2019, psi1_low kinda made up
+  mutate(sd_phi = 0.04, sd_gamma = 0.01, perc_red = 0.25)
+
+# get sample sizes on the log scale
+high_hex_count <- emu_ratio %>% filter(occupancy == "high") %>% pull(hex_count) %>% sum()
+sample_sizes_log <- seq(log(100), log(high_hex_count/2), by = 0.5) %>% exp() %>% round()
+# sample sizes by hand that are more rounded off
+sample_sizes <- c(100, 200, 300, 450, 750, 1200, 2000, 3500)
+
+# get scenarios, one for each emu
+sim_scenarios_emu <- bind_rows(sim_scenarios %>% mutate(emu = "BRE"),
+                               sim_scenarios %>% mutate(emu = "BRW"),
+                               sim_scenarios %>% mutate(emu = "CP"),
+                               sim_scenarios %>% mutate(emu = "SRM"),
+                               sim_scenarios %>% mutate(emu = "UGM")) %>%
+  # get sample sizes for low and high occupancy for each emu
+  left_join(emu_ratio %>%
+              select(emu, occupancy, hex_count)) %>%
+  # tidyr::pivot_wider(names_from = occupancy, values_from = hex_count) %>%
+  # rename(low_n = low, high_n = high)) %>%
+  # get the columns in the right order
+  select(sim_num, emu, psi, phi, sd_phi, sd_gamma, p, n = hex_count, perc_red) %>%
+  filter(!is.na(n)) %>%
+  group_by(emu, sim_num) %>%
+  slice(rep(row_number(), length(sample_sizes))) %>% mutate(total_n = sample_sizes) %>%
+  group_by(emu) %>%
+  mutate(sim_num = row_number()) %>%
+  unite("sim_id", emu, sim_num)
+
+# map high occupancy sims to their low occupancy counterpart
+# set seed for random seed generator
+set.seed(524879)
+sim_map_hier <- sim_scenarios_emu %>%
+  #select(sim_id, psi, phi, p, total_n) %>%
+  filter(psi != 0.03) %>%
+  separate(sim_id, c("emu"), sep = "_", remove = FALSE) %>%
+  rename(high_name = sim_id, high_hex_count = n) %>%
+  left_join(sim_scenarios_emu %>%
+              select(sim_id, psi, phi, p, total_n,low_hex_count = n) %>%
+              filter(psi == 0.03) %>%
+              separate(sim_id, c("emu"), sep = "_", remove = FALSE) %>%
+              select(-psi) %>%
+              rename(low_name = sim_id), by = c("emu", "total_n", "phi", "p")) %>%
+  group_by(phi, p, psi, total_n) %>%
+  mutate(scenario_id = cur_group_id(),
+         seed = (1 + floor(runif(1) * 100000))) %>%
+  ungroup() %>%
+  mutate(high_n = round(total_n*0.75), low_n = round(total_n*0.25),
+         low_psi = 0.03)
+
+usethis::use_data(sim_map_hier)
