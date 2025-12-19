@@ -80,7 +80,7 @@ missing_scenarios <- sim_data_files %>%
 
 # Let's do the missing ones
 
-ncores <- 12
+ncores <- 9
 cl <- makeCluster(ncores, type = "PSOCK")
 clusterExport(cl, c('init_model', 'missing_scenarios', 'sim_dataset', 'sample_data'))
 capture <- clusterEvalQ(cl, {
