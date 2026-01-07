@@ -36,11 +36,16 @@ sim_scenarios_table <- data.frame(
 nimble_srm_plt <- srm_power_check %>%
   #filter(total_n < 1501) %>%
   left_join(sim_scenarios_table, by = c("phi", "p", "psi" = "psi_high")) %>%
-  mutate(sim_type = paste0(simulation_scenario, ":  \u03A8 = ", psi, ", \u03C6 = ", phi, ", p = ", p)) %>%
+  mutate(sim_type = paste0(simulation_scenario, ":  \u03A8 = ", psi, ", \u03C6 = ", phi, ", p = ", p),
+         type_label = case_when(
+           type == "constant_phi" ~ "Constant Survival",
+           type == "equilibrium" ~ "Equilibrium",
+           type == "recursive" ~ "Recursive"
+         )) %>%
   #filter(CI_type == .x) %>%
   ggplot(aes(x = total_n, y = ci_two_tail)) +
   geom_line(aes(color = sim_type, linetype = sim_type), linewidth = 0.75) +
-  facet_wrap(~type, scales = "free_x") +
+  facet_wrap(~type_label, scales = "free_x") +
   theme_classic() +
   scale_colour_discrete("", type = rep(c("#8A6240", "#87A96B", "#28587B", "#c9673a"), each = 2)) +
   scale_linetype_manual("", values=c(2,1,2,1,2,1,2,1)) +
@@ -52,7 +57,9 @@ nimble_srm_plt <- srm_power_check %>%
         legend.key.spacing.y = unit(0.5, 'cm'),
         panel.spacing = unit(30, "pt"),
         axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
-        axis.title.x = element_text(margin = margin(t = 20, r = 0, b = 0, l = 0))
+        axis.title.x = element_text(margin = margin(t = 20, r = 0, b = 0, l = 0)),
+        strip.background = element_blank(),
+        strip.text = element_text(size = 15)
   ) +
   guides(linetype = guide_legend(override.aes = list(linewidth = 1))# byrow = TRUE),
          #color = guide_legend(byrow = TRUE)
