@@ -60,9 +60,11 @@ fit_model_reps_hier <- function(chunk, reps, n_year, n_visit, data){
     # Derive posterior for year
     psi[1] <-  init_occ
     for (i in 2:nseason){
-      # gives the estimate for year based on mean persistance (not a level of random effect)
-      psi[i] <- psi[i-1]*(persist_int[i-1]) + (1-psi[i-1])*colonize
+      # gives the estimate for year based on mean persistence (not a level of random effect)
+      logit(derived_persist[i-1]) <- logit(persist_int[i-1]) + logit(beta) * (i-1)
+      psi[i] <- psi[i-1]*(derived_persist[i-1]) + (1-psi[i-1])*colonize
     }
+
     perc_change <- (psi[10] - psi[1])/psi[1]
   })
 
