@@ -33,20 +33,21 @@ sim_scenarios_table <- data.frame(
   select(simulation_scenario,everything())
 
 ### Hierarchical Power ###
-hier_plot_df <- read.csv(here::here("data/hier_plot_df.csv"))
+hier_plot_df <- read.csv(here::here("data/nimble_power_check_hier.csv"))
 
 hier_plot_df <- hier_plot_df %>%
   select(-scenario_id) %>%
   left_join(sim_scenarios_table, by = c("phi", "p", "psi" = "psi_high"))
 
-ci_plotting_df <- tibble(ci = c(0.95, 0.90, 0.95, 0.90),
-                         y = c("ci_check", "ci_check_left_tail", "ci_check_any_decline", "post_check_any_decline"))
+# ci_plotting_df <- tibble(ci = c(0.95, 0.90, 0.95, 0.90),
+#                          y = c("ci_check", "ci_check_left_tail", "ci_check_any_decline", "post_check_any_decline"))
 
-hier_power_plt <- purrr::pmap(ci_plotting_df, ~hier_plot_df %>%
-                                filter(CI_type == .x) %>%
+hier_power_plt <- #purrr::pmap(ci_plotting_df, ~hier_plot_df %>%
+                                #filter(CI_type == .x) %>%
+  hier_plot_df %>%
   arrange(psi) %>%
   mutate(sim_type = paste0(simulation_scenario, ":  \u03A8 = ", psi, ", \u03C6 = ", phi, ", p = ", p)) %>%
-  ggplot(aes(x = total_samp, y = !! rlang::sym(.y))) +
+  ggplot(aes(x = total_n, y = ci_two_tail)) +
   geom_line(aes(color = sim_type, linetype = sim_type), linewidth = 0.75) +
   theme_classic() +
   scale_colour_discrete("", type = rep(c("#8A6240", "#87A96B", "#28587B", "#c9673a"), each = 2)) +
@@ -59,7 +60,7 @@ hier_power_plt <- purrr::pmap(ci_plotting_df, ~hier_plot_df %>%
         axis.title.x = element_text(margin = margin(t = 20, r = 0, b = 0, l = 0))) +
   ylab("Percent Success") +
   xlab("Sample Size")
-)
+#)
 
 #ggsave(here::here("figures/hier_power_plot.jpeg"), hier_power_plt)
 
