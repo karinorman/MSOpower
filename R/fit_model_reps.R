@@ -13,7 +13,7 @@ fit_model_reps <- function(chunk, reps, n_year, n_visit, data, method = c("recur
   #### Set up nimble model for that sample size ####
   
   if (method %in% c("recursive", "equilibrium")){
-  # Model code for single EMU year estimate
+    # Model code for single EMU year estimate
     dynoccmod_code <- nimble::nimbleCode({
       
       # The whole likelihood for the dynamic occupancy model is contained inside
@@ -25,8 +25,8 @@ fit_model_reps <- function(chunk, reps, n_year, n_visit, data, method = c("recur
       # with replicate)
       
       for (i in 1:nsite) {
-        y[i, 1:nseason, 1:nrep] ~ dDynOcc_vss(probPersist = persist[1:(nseason-1)],
-                                              probColonize = colonize,
+        y[i, 1:nseason, 1:nrep] ~ dDynOcc_vvs(probPersist = persist[1:(nseason-1)],
+                                              probColonize = colonize[1:(nseason-1)],
                                               init = init_occ,
                                               p = detect,
                                               start = start_indexes[1:nseason], # Start and end arguments allow you to provide ragged mtx data
@@ -39,18 +39,21 @@ fit_model_reps <- function(chunk, reps, n_year, n_visit, data, method = c("recur
       for (i in 1:(nseason-1)){
         persist_intercept[i] ~ dunif(0,1)
         logit(persist[i]) <- logit(persist_intercept[i]) + logit(beta) * i
+        
+        # random intercept for colonization
+        colonize[i] ~ dunif(0,1)
       }
       
       # priors
       beta ~ dunif(0,1)
-      colonize ~ dunif(0,1)
+      #colonize ~ dunif(0,1)
       init_occ ~ dunif(0,1)
       detect ~ dunif(0,1)
       
       # Derive posterior for year
       psi[1] <-  init_occ
       for (i in 2:nseason){
-        psi[i] <- psi[i-1]*(persist[i-1]) + (1-psi[i-1])*colonize
+        psi[i] <- psi[i-1]*(persist[i-1]) + (1-psi[i-1])*colonize[i-1]
       }
       perc_change <- (psi[10] - psi[1])/psi[1]
     })
@@ -67,8 +70,8 @@ fit_model_reps <- function(chunk, reps, n_year, n_visit, data, method = c("recur
       # with replicate)
       
       for (i in 1:nsite) {
-        y[i, 1:nseason, 1:nrep] ~ dDynOcc_vss(probPersist = persist[1:(nseason-1)],
-                                              probColonize = colonize,
+        y[i, 1:nseason, 1:nrep] ~ dDynOcc_vvs(probPersist = persist[1:(nseason-1)],
+                                              probColonize = colonize[1:(nseason-1)],
                                               init = init_occ,
                                               p = detect,
                                               start = start_indexes[1:nseason], # Start and end arguments allow you to provide ragged mtx data
@@ -80,16 +83,19 @@ fit_model_reps <- function(chunk, reps, n_year, n_visit, data, method = c("recur
       # Define Priors
       for (i in 1:(nseason-1)){
         persist[i] ~ dunif(0,1)
+        
+        # random intercept for colonization
+        colonize[i] ~ dunif(0,1)
       }
       
-      colonize ~ dunif(0,1)
+      #colonize ~ dunif(0,1)
       init_occ ~ dunif(0,1)
       detect ~ dunif(0,1)
       
       # Derive posterior for year
       psi[1] <-  init_occ
       for (i in 2:nseason){
-        psi[i] <- psi[i-1]*(persist[i-1]) + (1-psi[i-1])*colonize
+        psi[i] <- psi[i-1]*(persist[i-1]) + (1-psi[i-1])*colonize[i-1]
       }
       perc_change <- (psi[10] - psi[1])/psi[1]
     })
@@ -104,7 +110,7 @@ fit_model_reps <- function(chunk, reps, n_year, n_visit, data, method = c("recur
                                scenario_id, low_gamma, high_gamma, year, visit){
     
     set.seed(seed)
-
+    
     for (i in 1:reps){
       
       if(method == "recursive"){
@@ -118,17 +124,17 @@ fit_model_reps <- function(chunk, reps, n_year, n_visit, data, method = c("recur
         low_data <- sim_dataset(psi = low_psi, phi = phi, sd_phi = sd_phi, sd_gamma = sd_gamma, p = p,
                                 n_sites = low_hex_count, perc_red = perc_red, nyear = year, n_vis = visit) %>%
           append(c("sim_id" = low_name, "rep" = i))
-      
+        
       } else if (method == "equilibrium"){
         
         #simulate high occupancy
         high_data <- sim_dataset_equil(psi = psi, phi = phi, sd_phi = sd_phi, sd_gamma = sd_gamma, p = p,
-                                 n_sites = high_hex_count, perc_red = perc_red, nyear = year, n_vis = visit) %>%
+                                       n_sites = high_hex_count, perc_red = perc_red, nyear = year, n_vis = visit) %>%
           append(c("sim_id" = high_name, "rep" = i))
         
         #simulate low occupancy
         low_data <- sim_dataset_equil(psi = low_psi, phi = phi, sd_phi = sd_phi, sd_gamma = sd_gamma, p = p,
-                                n_sites = low_hex_count, perc_red = perc_red, nyear = year, n_vis = visit) %>%
+                                      n_sites = low_hex_count, perc_red = perc_red, nyear = year, n_vis = visit) %>%
           append(c("sim_id" = low_name, "rep" = i))
         
       } else {
@@ -163,16 +169,16 @@ fit_model_reps <- function(chunk, reps, n_year, n_visit, data, method = c("recur
         simplify2array()
       
       if (method %in% c("recursive", "equilibrium")){
-      # list of new initialized variables
+        # list of new initialized variables
         new_inits <-  list(
-          colonize = 0.5,
+          colonize = rep(0.5, (year-1)),
           init_occ = 0.5,
           detect = 0.5,
           persist_intercept = rep(0.5, (year-1)),
           beta = 0.5)
       } else{
         new_inits <-  list(
-          colonize = 0.5,
+          colonize = rep(0.5, (year-1)),
           init_occ = 0.5,
           detect = 0.5,
           persist = rep(0.5, (year-1)))
@@ -217,7 +223,7 @@ init_model <- function(n, year, visit, model_obj, method = c("recursive", "equil
   
   if (method %in% c("recursive", "equilibrium")){
     inits_list <- list(
-      colonize = 0.5,
+      colonize =rep(0.5, (nseason-1)),
       init_occ = 0.5,
       detect = 0.5,
       persist_intercept = rep(0.5, (nseason-1)),
@@ -225,7 +231,7 @@ init_model <- function(n, year, visit, model_obj, method = c("recursive", "equil
     )
   } else {
     inits_list <- list(
-      colonize = 0.5,
+      colonize = rep(0.5, (nseason-1)),
       init_occ = 0.5,
       detect = 0.5,
       persist = rep(0.5, (nseason-1))
