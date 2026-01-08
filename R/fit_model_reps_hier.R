@@ -28,7 +28,7 @@ fit_model_reps_hier <- function(chunk, reps, n_year, n_visit, data){
 
     for (i in 1:nsite) {
       y[i, 1:nseason, 1:nrep] ~ dDynOcc_vvs(probPersist = persist[i, 1:(nseason-1)],
-                                            probColonize = colonize[i, 1:(nseason-1)],
+                                            probColonize = colonize[1:(nseason-1)],
                                             init = init_occ,
                                             p = detect,
                                             start = start_indexes[1:nseason], # Start and end arguments allow you to provide ragged mtx data
