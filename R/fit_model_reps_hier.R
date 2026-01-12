@@ -27,8 +27,8 @@ fit_model_reps_hier <- function(chunk, reps, n_year, n_visit, data){
     # with replicate)
 
     for (i in 1:nsite) {
-      y[i, 1:nseason, 1:nrep] ~ dDynOcc_vss(probPersist = persist[i, 1:(nseason-1)],
-                                            probColonize = colonize,
+      y[i, 1:nseason, 1:nrep] ~ dDynOcc_vvs(probPersist = persist[i, 1:(nseason-1)],
+                                            probColonize = colonize[1:(nseason-1)],
                                             init = init_occ,
                                             p = detect,
                                             start = start_indexes[1:nseason], # Start and end arguments allow you to provide ragged mtx data
@@ -39,7 +39,11 @@ fit_model_reps_hier <- function(chunk, reps, n_year, n_visit, data){
 
     # Define Priors
     for (i in 1:(nseason-1)){
+
       persist_int[i] ~ dunif(0,1)
+      # random intercept for colonization
+      colonize[i] ~ dunif(0,1)
+
       for (j in 1:nsite){
         logit(persist[j, i]) <- logit(persist_int[i]) + logit(beta) * i + ranef[EMU[j]]
         #logit(persist[j, i]) <- logit(persist_int[i]) + ranef[EMU[j]]
@@ -52,7 +56,6 @@ fit_model_reps_hier <- function(chunk, reps, n_year, n_visit, data){
     }
 
     beta ~ dunif(0,1)
-    colonize ~ dunif(0,1)
     init_occ ~ dunif(0,1)
     detect ~ dunif(0,1)
     sigma_ranef ~ dunif(0, 10)
@@ -62,7 +65,7 @@ fit_model_reps_hier <- function(chunk, reps, n_year, n_visit, data){
     for (i in 2:nseason){
       # gives the estimate for year based on mean persistence (not a level of random effect)
       logit(derived_persist[i-1]) <- logit(persist_int[i-1]) + logit(beta) * (i-1)
-      psi[i] <- psi[i-1]*(derived_persist[i-1]) + (1-psi[i-1])*colonize
+      psi[i] <- psi[i-1]*(derived_persist[i-1]) + (1-psi[i-1])*colonize[i-1]
     }
 
     perc_change <- (psi[10] - psi[1])/psi[1]
@@ -128,7 +131,7 @@ fit_model_reps_hier <- function(chunk, reps, n_year, n_visit, data){
     # list of new initialized variables
     new_inits <-  list(
       beta = 0.5,
-      colonize = 0.5,
+      colonize = rep(0.5, (n_year-1)),
       init_occ = 0.5,
       detect = 0.5,
       persist_int = rep(0.5, (n_year-1)),
@@ -183,7 +186,7 @@ init_model <- function(n, year, visit, emu_vec, model_obj){
     data = list(y = obs_occ_init),
     inits = list(
       beta = 0.5,
-      colonize = 0.5,
+      colonize = rep(0.5, (nseason-1)),
       init_occ = 0.5,
       detect = 0.5,
       persist_int = rep(0.5, (nseason-1)),
