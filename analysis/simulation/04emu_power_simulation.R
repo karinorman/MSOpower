@@ -79,22 +79,26 @@ missing_scenarios <- sim_data_files %>%
   select(-c(complete, reps))
 
 # Let's do the missing ones
-
-ncores <- 9
-cl <- makeCluster(ncores, type = "PSOCK")
-clusterExport(cl, c('init_model', 'missing_scenarios', 'sim_dataset', 'sample_data'))
-capture <- clusterEvalQ(cl, {
-  library(nimbleEcology)
-  library(magrittr)
-  library(purrr)
-  library(dplyr)
-})
-
-
-chunk_list <- unique(missing_scenarios$chunk_num)
-results <- parLapply(cl, chunk_list, fit_model_reps,
-                     reps = simn, n_year = 10, n_visit = 2, data = missing_scenarios,
-                     method = "recursive", path = path, save_ending = "")
+# want a worker for each row instead of using the chunk approach
+# missing_scenarios_expt <- missing_scenarios %>%
+#   ungroup() %>%
+#   mutate(chunk_num = row_number())
+# 
+# ncores <- 17
+# cl <- makeCluster(ncores, type = "PSOCK")
+# clusterExport(cl, c('init_model', 'missing_scenarios_expt', 'sim_dataset', 'sample_data'))
+# capture <- clusterEvalQ(cl, {
+#   library(nimbleEcology)
+#   library(magrittr)
+#   library(purrr)
+#   library(dplyr)
+# })
+# 
+# 
+# chunk_list <- unique(missing_scenarios_expt$chunk_num)
+# results <- parLapply(cl, chunk_list, fit_model_reps,
+#                      reps = simn, n_year = 10, n_visit = 2, data = missing_scenarios_expt,
+#                      method = "recursive", path = path, save_ending = "")
 
 
 
