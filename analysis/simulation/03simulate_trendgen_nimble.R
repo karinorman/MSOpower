@@ -130,6 +130,12 @@ nimble_output <- purrr::map_dfr(list.files(paste0(path, "/emu_summary/"), full.n
                              select(mean, ci025 = X2.5., ci97.5 = X97.5., high_name, rep)) %>%
               mutate(type = "constant_phi"))
 
+# fully completed scenarios
+comp_scenario <- nimble_output %>% 
+  group_by(high_name, type) %>% 
+  summarize(rep_count = n_distinct(rep)) %>% 
+  filter(rep_count == 200)
+
 # get dataframe of sims and reps we've already done
 sim_data_files <- data.frame(files = list.files(paste0(path, "/emu_simulated_data/")),
                          file_paths = list.files(paste0(path, "/emu_simulated_data/"), full.names = TRUE)) %>%
@@ -205,6 +211,66 @@ perc_change_check <- nimble_output %>%
   separate(high_name, c("emu", "sim_num"), sep = "_", remove = FALSE)
 
 readr::write_csv(perc_change_check, here::here("data/nimble_power_check_SRM.csv"))
+
+
+### When simulation gets interrupted, restart here
+#################################################################
+################## Equilibrium Trend Sim ########################
+#################################################################
+
+comp_equil_scenario <- comp_scenario %>% filter(type == "equilibrium") %>% pull(high_name)
+
+sim_map_restart <- sim_map_names %>%
+  filter(!high_name %in% comp_equil_scenario)
+
+path_ending <- "_equil"
+
+ncores <- 2
+cl <- makeCluster(ncores, type = "PSOCK")
+clusterExport(cl, c('init_model', 'sim_map_restart', 'sim_dataset_equil', 'sample_data'))
+capture <- clusterEvalQ(cl, {
+  library(nimbleEcology)
+  library(magrittr)
+  library(purrr)
+  library(dplyr)
+})
+
+
+chunk_list <- unique(sim_map_restart$chunk_num)
+results <- parLapply(cl, chunk_list, fit_model_reps,
+                     reps = simn, n_year = 10, n_visit = 2, data = sim_map_restart,
+                     method = "equilibrium", path = path, save_ending = path_ending)
+
+#######################################################################
+################## Constant Survival Trend Sim ########################
+#######################################################################
+
+path_ending <- "_constphi"
+
+comp_constphi_scenario <- comp_scenario %>% filter(type == "constant_phi") %>% pull(high_name)
+
+sim_map_constphi <- sim_map_names %>%
+  mutate(low_gamma = ((1-perc_red)*low_psi*(1-phi))/(1 - ((1-perc_red)*low_psi)),
+         high_gamma = ((1-perc_red)*psi*(1-phi))/(1 - ((1-perc_red)*psi))) %>%
+  filter(!high_name %in% comp_constphi_scenario)
+
+ncores <- 13
+cl <- makeCluster(ncores, type = "PSOCK")
+clusterExport(cl, c('init_model', 'sim_map_constphi', 'sim_dataset_constphi', 'sample_data'))
+capture <- clusterEvalQ(cl, {
+  library(nimbleEcology)
+  library(magrittr)
+  library(purrr)
+  library(dplyr)
+})
+
+
+chunk_list <- unique(sim_map_constphi$chunk_num)
+results <- parLapply(cl, chunk_list, fit_model_reps,
+                     reps = simn, n_year = 10, n_visit = 2, data = sim_map_constphi,
+                     method = "const_phi", path = path, save_ending = path_ending)
+
+
 
 
 ### Let's look at how the estimates converge on the true mean trend across sample sizes
