@@ -33,7 +33,7 @@ source(here::here("R/fit_model_reps_hier.R"))
 
 ncores <- 40
 cl <- makeCluster(ncores, type = "PSOCK")
-clusterExport(cl, c('init_model', 'sim_map_names', 'sim_dataset', 'sample_data', 'path'))
+clusterExport(cl, c('init_model', 'sim_map_hier', 'sim_dataset', 'sample_data', 'path'))
 capture <- clusterEvalQ(cl, {
   library(nimbleEcology)
   library(magrittr)

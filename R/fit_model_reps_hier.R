@@ -28,7 +28,7 @@ fit_model_reps_hier <- function(chunk, reps, n_year, n_visit, data){
 
     for (i in 1:nsite) {
       y[i, 1:nseason, 1:nrep] ~ dDynOcc_vvs(probPersist = persist[i, 1:(nseason-1)],
-                                            probColonize = colonize[1:(nseason-1)],
+                                            probColonize = colonize[i, 1:(nseason-1)],
                                             init = init_occ,
                                             p = detect,
                                             start = start_indexes[1:nseason], # Start and end arguments allow you to provide ragged mtx data
@@ -42,30 +42,36 @@ fit_model_reps_hier <- function(chunk, reps, n_year, n_visit, data){
 
       persist_int[i] ~ dunif(0,1)
       # random intercept for colonization
-      colonize[i] ~ dunif(0,1)
+      colonize_int[i] ~ dunif(0,1)
 
       for (j in 1:nsite){
-        logit(persist[j, i]) <- logit(persist_int[i]) + logit(beta) * i + ranef[EMU[j]]
+        logit(persist[j, i]) <- logit(persist_int[i]) + logit(beta_persist) * i + ranef_persist[EMU[j]]
+        logit(colonize[j, i]) <- logit(colonize_int[i]) + logit(beta_colonize) * i + ranef_colonize[EMU[j]]
         #logit(persist[j, i]) <- logit(persist_int[i]) + ranef[EMU[j]]
       }
     }
 
     for (r in 1:num_EMU) {
       # do sd = so life isn't ruined (might think its precision)
-      ranef[r] ~ dnorm(0, sd = sigma_ranef)
+      ranef_persist[r] ~ dnorm(0, sd = sigma_ranef_persist)
+      ranef_colonize[r] ~ dnorm(0, sd = sigma_ranef_colonize)
     }
 
-    beta ~ dunif(0,1)
+    beta_persist ~ dunif(0,1)
+    beta_colonize ~ dunif(0,1)
     init_occ ~ dunif(0,1)
     detect ~ dunif(0,1)
-    sigma_ranef ~ dunif(0, 10)
+    sigma_ranef_persist ~ dunif(0, 10)
+    sigma_ranef_colonize ~ dunif(0, 10)
 
     # Derive posterior for year
     psi[1] <-  init_occ
     for (i in 2:nseason){
       # gives the estimate for year based on mean persistence (not a level of random effect)
-      logit(derived_persist[i-1]) <- logit(persist_int[i-1]) + logit(beta) * (i-1)
-      psi[i] <- psi[i-1]*(derived_persist[i-1]) + (1-psi[i-1])*colonize[i-1]
+      logit(derived_persist[i-1]) <- logit(persist_int[i-1]) + logit(beta_persist) * (i-1)
+      logit(derived_colonize[i-1]) <- logit(colonize_int[i-1]) + logit(beta_colonize) * (i-1)
+      
+      psi[i] <- psi[i-1]*(derived_persist[i-1]) + (1-psi[i-1])*derived_colonize[i-1]
     }
 
     perc_change <- (psi[10] - psi[1])/psi[1]
@@ -130,13 +136,16 @@ fit_model_reps_hier <- function(chunk, reps, n_year, n_visit, data){
 
     # list of new initialized variables
     new_inits <-  list(
-      beta = 0.5,
-      colonize = rep(0.5, (n_year-1)),
+      beta_persist = 0.5,
+      beta_colonize = 0.5,
+      colonize_int = rep(0.5, (n_year-1)),
       init_occ = 0.5,
       detect = 0.5,
-      persist_int = rep(0.5, (n_year-1)),
-      ranef = rep(0, n_distinct(emu_var)),
-      sigma_ranef = 1,
+      persist_int = rep(0.5, (n_year -1)),
+      ranef_persist = rep(0, n_distinct(emu_var)),
+      ranef_colonize = rep(0, n_distinct(emu_var)),
+      sigma_ranef_persist = 1,
+      sigma_ranef_colonize = 1,
       EMU = emu_var)
 
     # update model with data
@@ -185,13 +194,16 @@ init_model <- function(n, year, visit, emu_vec, model_obj){
     ),
     data = list(y = obs_occ_init),
     inits = list(
-      beta = 0.5,
-      colonize = rep(0.5, (nseason-1)),
+      beta_persist = 0.5,
+      beta_colonize = 0.5,
+      colonize_int = rep(0.5, (nseason-1)),
       init_occ = 0.5,
       detect = 0.5,
       persist_int = rep(0.5, (nseason-1)),
-      ranef = rep(0, n_distinct(emu_vec)),
-      sigma_ranef = 1,
+      ranef_persist = rep(0, n_distinct(emu_vec)),
+      ranef_colonize = rep(0, n_distinct(emu_vec)),
+      sigma_ranef_persist = 1,
+      sigma_ranef_colonize = 1,
       EMU = sample(emu_vec, nsite, replace = TRUE)
     )
   )
@@ -204,7 +216,7 @@ init_model <- function(n, year, visit, emu_vec, model_obj){
 
   # Build an MCMC
   conf <- nimble::configureMCMC(mod)
-  conf$addMonitors(c("psi", "perc_change", "ranef"))
+  conf$addMonitors(c("psi", "perc_change", "ranef_persist", "ranef_colonize"))
   mcmc <- nimble::buildMCMC(conf)
 
   # Compile
