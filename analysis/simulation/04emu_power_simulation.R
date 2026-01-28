@@ -68,8 +68,8 @@ sim_data_files <- data.frame(files = list.files(paste0(path, "/emu_simulated_dat
 
 # are any scenarios missing?
 # get scenarios for which we didn't get all the reps
-missing_scenarios <- sim_data_files %>% 
-  group_by(high_name, scenario_id) %>% 
+missing_scenarios <- sim_data_files %>%
+  group_by(high_name, scenario_id) %>%
   summarize(reps = n_distinct(rep)) %>%
   select(-scenario_id) %>%
   filter(reps == 200) %>%
@@ -83,7 +83,7 @@ missing_scenarios <- sim_data_files %>%
 # missing_scenarios_expt <- missing_scenarios %>%
 #   ungroup() %>%
 #   mutate(chunk_num = row_number())
-# 
+#
 # ncores <- 17
 # cl <- makeCluster(ncores, type = "PSOCK")
 # clusterExport(cl, c('init_model', 'missing_scenarios_expt', 'sim_dataset', 'sample_data'))
@@ -93,8 +93,8 @@ missing_scenarios <- sim_data_files %>%
 #   library(purrr)
 #   library(dplyr)
 # })
-# 
-# 
+#
+#
 # chunk_list <- unique(missing_scenarios_expt$chunk_num)
 # results <- parLapply(cl, chunk_list, fit_model_reps,
 #                      reps = simn, n_year = 10, n_visit = 2, data = missing_scenarios_expt,
@@ -105,7 +105,7 @@ missing_scenarios <- sim_data_files %>%
 # get true occurrence at the scenario level (paired high and low)
 true_occ_paired <- pmap_dfr(sim_data_files %>% select(high_name, rep, low_name, scenario_id),
                             function(high_name, rep, low_name, scenario_id){
-                              
+
                               #browser()
                               readRDS(paste0(path, "/emu_simulated_data", "/", high_name, "_", rep, "_", scenario_id, "_simdata.rds"))$true_occ %>%
                                 bind_rows(readRDS(paste0(path, "/emu_simulated_data", "/", low_name, "_", rep, "_", scenario_id, "_simdata.rds"))$true_occ) %>%
@@ -136,3 +136,26 @@ perc_change_check <- nimble_output %>%
 
 readr::write_csv(perc_change_check, here::here("data/nimble_power_check_emu.csv"))
 
+### Export dataframe of sample sizes and power values for before and after the threshold is crossed
+
+pre_df <- perc_change_check %>%
+  select(emu, ci_two_tail, total_n, psi, phi, p) %>%
+  mutate(distance = ci_two_tail - 0.90) %>%
+  filter(p == 0.8, distance < 0) %>%
+  group_by(emu, psi, phi, p) %>%
+  filter(abs(distance) == min(abs(distance))) %>%
+  mutate(threshold = "pre")
+
+post_df <- perc_change_check %>%
+  select(emu, ci_two_tail, total_n, psi, phi, p) %>%
+  mutate(distance = ci_two_tail - 0.90) %>%
+  filter(p == 0.8, distance > 0) %>%
+  group_by(emu, psi, phi, p) %>%
+  filter(distance == min(distance)) %>%
+  mutate(threshold = "post")
+
+threshold_df <- bind_rows(pre_df, post_df) %>%
+  select(-distance) %>%
+  rename(power = ci_two_tail, n = total_n)
+
+readr::write_csv(threshold_df, here::here("data/emu_power_thresholds.csv"))
