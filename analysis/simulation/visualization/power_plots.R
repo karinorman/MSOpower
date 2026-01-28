@@ -86,6 +86,9 @@ power_plt <- power_eval %>%
   geom_vline(xintercept = 300) +
   geom_vline(xintercept = 420) +
   geom_vline(xintercept = 560) +
+  geom_vline(xintercept = 700) +
+  geom_vline(xintercept = 930) +
+  geom_vline(xintercept = 1000) +
   facet_wrap(~unit, scales = "free_x") +
   theme_classic() +
   scale_colour_discrete("", type = rep(c("#8A6240", "#87A96B", "#28587B", "#c9673a"), each = 2)) +
