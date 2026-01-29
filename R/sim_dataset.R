@@ -1,4 +1,4 @@
-sim_dataset <- function(psi, phi, sd_phi, sd_gamma, p, n_sites, perc_red, nyear, n_vis){
+sim_dataset <- function(psi, phi, sd_phi, sd_gamma, p, n_sites, perc_red, nyear, n_vis, phi_noise = NULL, gamma_noise = NULL){
 
   ### psi = initial occupancy
   ### phi = local survival in year 1
@@ -25,7 +25,13 @@ sim_dataset <- function(psi, phi, sd_phi, sd_gamma, p, n_sites, perc_red, nyear,
   logit.gamma.mean <- qlogis(gamma)
 
   # subsequent yearly gammas with noise
-  gamma_year <- plogis(logit.gamma.mean + rnorm((nyear-1), 0, sd_gamma))
+  if (hasArg(gamma_noise)){
+    if (length(gamma_noise) == nyear-1){
+      gamma_year <- plogis(logit.gamma.mean + gamma_noise)
+    } else {stop("Length of gamma_noise is incorrect, should be the number of sample years - 1.")}
+  } else{
+    gamma_year <- plogis(logit.gamma.mean + rnorm((nyear-1), 0, sd_gamma))
+  }
   # enforce no probabilities greater than 1
   gamma_year[gamma_year > 1] <- 1
 
@@ -64,7 +70,14 @@ sim_dataset <- function(psi, phi, sd_phi, sd_gamma, p, n_sites, perc_red, nyear,
   # }
 
   # get noise around phi at each time step drawn from N(phi, sd_phi)
-  phi_year<- purrr::map(phi_year, ~rnorm(1, .x, sd_phi)) %>% unlist()
+  if (hasArg(phi_noise)){
+    if (length(phi_noise) == nyear-1){
+      phi_year <- phi_year + phi_noise
+    } else {stop("Length of phi_noise is incorrect, should be the number of sample years - 1.")}
+  } else{
+    phi_year <- phi_year + rnorm((nyear-1), 0, sd_phi)
+  }
+  
   # enforce no probabilities greater than 1
   phi_year[phi_year > 1] <- 1
 
