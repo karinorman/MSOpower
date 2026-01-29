@@ -87,12 +87,19 @@ fit_model_reps_hier <- function(chunk, reps, n_year, n_visit, data){
   dir.create(paste0(path, "/hier_simulated_data"))
 
   for (i in 1:reps){
+    
+    # get annual noise for all EMU's so that it varies only by year (and not EmU)
+    phi_noise_vec <- rnorm((nyear-1), 0, unique(map_df$sd_phi))
+    gamma_noise_vec <- rnorm((nyear-1), 0, unique(map_df$sd_gamma))
+    
+    
     # get high data
     high_data <- purrr::pmap_dfr(map_df %>% select(-c(high_n, low_n)), function(high_name, emu, psi, phi, sd_phi, sd_gamma, p, high_hex_count, perc_red, total_n, low_name,
                                                                                 low_hex_count, low_psi, seed, year, visit){
 
       high_data <- sim_dataset(psi = psi, phi = phi, sd_phi = sd_phi, sd_gamma = sd_gamma, p = p,
-                               n_sites = high_hex_count, perc_red = perc_red, nyear = year, n_vis = visit) %>%
+                               n_sites = high_hex_count, perc_red = perc_red, nyear = year, n_vis = visit,
+                               phi_noise = phi_noise_vec, gamma_noise = gamma_noise_vec) %>%
         append(c("sim_id" = high_name, "rep" = i, scenario_id = chunk))
 
       saveRDS(high_data, paste0(path, "/hier_simulated_data/", high_name, "_", i, "_", chunk, "_simdata.rds"))
@@ -107,7 +114,8 @@ fit_model_reps_hier <- function(chunk, reps, n_year, n_visit, data){
                                                                                low_hex_count, low_psi, seed, year, visit){
 
       low_data <- sim_dataset(psi = low_psi, phi = phi, sd_phi = sd_phi, sd_gamma = sd_gamma, p = p,
-                              n_sites = low_hex_count, perc_red = perc_red, nyear = year, n_vis = visit) %>%
+                              n_sites = low_hex_count, perc_red = perc_red, nyear = year, n_vis = visit,
+                              phi_noise = phi_noise_vec, gamma_noise = gamma_noise_vec) %>%
         append(c("sim_id" = low_name, "rep" = i, scenario_id = chunk))
 
       saveRDS(low_data, paste0(path, "/hier_simulated_data/", low_name, "_", i, "_", chunk, "_simdata.rds"))
