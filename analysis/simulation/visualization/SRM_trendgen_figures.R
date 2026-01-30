@@ -45,6 +45,12 @@ nimble_srm_plt <- srm_power_check %>%
   #filter(CI_type == .x) %>%
   ggplot(aes(x = total_n, y = ci_two_tail)) +
   geom_line(aes(color = sim_type, linetype = sim_type), linewidth = 0.75) +
+  geom_vline(xintercept = 300) +
+  geom_vline(xintercept = 420) +
+  geom_vline(xintercept = 560) +
+  geom_vline(xintercept = 700) +
+  geom_vline(xintercept = 1000) +
+  geom_vline(xintercept = 1500) +
   facet_wrap(~type_label, scales = "free_x") +
   theme_classic() +
   scale_colour_discrete("", type = rep(c("#8A6240", "#87A96B", "#28587B", "#c9673a"), each = 2)) +
