@@ -255,6 +255,50 @@ occ_trend_plot <- high_occ_plot + plot_spacer() + plot_spacer() +
 
 ggsave(here::here("figures/occ_trend_plot_srm.jpg"), occ_trend_plot, width = 8, height = 11)
 
+###########################################
+####### comparison of power checks  #######
+###########################################
+
+power_crit_plt <- srm_power_check %>%
+  filter(type == "recursive") %>%
+  pivot_longer(c(ci_two_tail, ci_any_decline), names_to = "ci_type", values_to = "power") %>%
+  #filter(total_n < 1501) %>%
+  left_join(sim_scenarios_table, by = c("phi", "p", "psi" = "psi_high")) %>%
+  mutate(sim_type = paste0(simulation_scenario, ":  \u03A8 = ", psi, ", \u03C6 = ", phi, ", p = ", p),
+         type_label = case_when(
+           ci_type == "ci_two_tail" ~ "Two Tail",
+           ci_type == "ci_any_decline" ~ "Any Decline",
+         )) %>%
+  #filter(CI_type == .x) %>%
+  ggplot(aes(x = total_n, y = power)) +
+  geom_line(aes(color = sim_type, linetype = sim_type), linewidth = 0.75) +
+  facet_wrap(~type_label, scales = "free_x") +
+  theme_classic() +
+  scale_colour_discrete("", type = rep(c("#8A6240", "#87A96B", "#28587B", "#c9673a"), each = 2)) +
+  scale_linetype_manual("", values=c(2,1,2,1,2,1,2,1)) +
+  geom_hline(yintercept = 0.9, color = "darkgrey", linetype = "dashed", linewidth = 1) +
+  theme(legend.position = "inside", legend.position.inside = c(0.9, 0.3),
+        legend.text=element_text(size=12),
+        legend.key.width = unit(1,"cm"),
+        text=element_text(size=14),
+        legend.key.spacing.y = unit(0.5, 'cm'),
+        panel.spacing = unit(30, "pt"),
+        axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
+        axis.title.x = element_text(margin = margin(t = 20, r = 0, b = 0, l = 0)),
+        strip.background = element_blank(),
+        strip.text = element_text(size = 15)
+  ) +
+  guides(linetype = guide_legend(override.aes = list(linewidth = 1))# byrow = TRUE),
+         #color = guide_legend(byrow = TRUE)
+  ) +
+  ylab("Percent Success") +
+  xlab("Sample Size")
+
+ggsave(here::here("figures/SRM_trendgen_power.png"), nimble_srm_plt, width = 17, height = 8)
+
+
+
+
 # # Power check figure for single trend generation option for all EMU's
 # nimble_emu_plt <- nimble_power_check %>%
 #   #filter(total_n < 1500) %>%
