@@ -83,8 +83,8 @@ fit_model_reps_hier <- function(chunk, reps, n_year, n_visit, data){
   for (i in 1:reps){
     
     # get annual noise for all EMU's so that it varies only by year (and not EmU)
-    phi_noise_vec <- rnorm((nyear-1), 0, unique(map_df$sd_phi))
-    gamma_noise_vec <- rnorm((nyear-1), 0, unique(map_df$sd_gamma))
+    phi_noise_vec <- rnorm((n_year-1), 0, unique(map_df$sd_phi))
+    gamma_noise_vec <- rnorm((n_year-1), 0, unique(map_df$sd_gamma))
     
     
     # get high data
