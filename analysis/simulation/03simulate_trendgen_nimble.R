@@ -192,17 +192,53 @@ true_occ_paired <- pmap_dfr(sim_data_files %>% select(high_name, rep, low_name, 
 
 readr::write_csv(true_occ_paired, here::here("data/true_occ_paired_SRM.csv"))
 
+# get CI for left tail test from posteriors
+left_tail_ci <- purrr::map_dfr(list.files(paste0(path, "/emu_posterior/")), ~readRDS(paste0(path, "/emu_posterior/", .x)) %>%
+                                 MCMCvis::MCMCsummary(., probs = c(0.05, 1)) %>%
+                                 mutate(emu = stringr::str_split(.x, "_") %>% .[[1]] %>% .[1],
+                                        scenario = stringr::str_split(.x, "_") %>% .[[1]] %>% .[2],
+                                        rep = stringr::str_split(.x, "_") %>% .[[1]] %>% .[3]) %>%
+                                 unite("high_name", emu, scenario) %>%
+                                 tibble::rownames_to_column(var = "parameter") %>%
+                                 filter(parameter == "perc_change") %>%
+                                 select(mean, ci05 = `5%`, ci100 = `100%`, high_name, rep)) %>%
+  mutate(type = "recursive") %>%
+  bind_rows(purrr::map_dfr(list.files(paste0(path, "/emu_posterior_equil/")), ~readRDS(paste0(path, "/emu_posterior/", .x)) %>%
+                             MCMCvis::MCMCsummary(., probs = c(0.05, 1)) %>%
+                             mutate(emu = stringr::str_split(.x, "_") %>% .[[1]] %>% .[1],
+                                    scenario = stringr::str_split(.x, "_") %>% .[[1]] %>% .[2],
+                                    rep = stringr::str_split(.x, "_") %>% .[[1]] %>% .[3]) %>%
+                             unite("high_name", emu, scenario) %>%
+                             tibble::rownames_to_column(var = "parameter") %>%
+                             filter(parameter == "perc_change") %>%
+                             select(mean, ci05 = `5%`, ci100 = `100%`, high_name, rep)) %>%
+              mutate(type = "equilibrium"),
+            purrr::map_dfr(list.files(paste0(path, "/emu_posterior_constphi/")), ~readRDS(paste0(path, "/emu_posterior/", .x)) %>%
+                             MCMCvis::MCMCsummary(., probs = c(0.05, 1)) %>%
+                             mutate(emu = stringr::str_split(.x, "_") %>% .[[1]] %>% .[1],
+                                    scenario = stringr::str_split(.x, "_") %>% .[[1]] %>% .[2],
+                                    rep = stringr::str_split(.x, "_") %>% .[[1]] %>% .[3]) %>%
+                             unite("high_name", emu, scenario) %>%
+                             tibble::rownames_to_column(var = "parameter") %>%
+                             filter(parameter == "perc_change") %>%
+                             select(mean, ci05 = `5%`, ci100 = `100%`, high_name, rep)) %>%
+              mutate(type = "constant_phi"))
 # perc_change power checks
 perc_change_check <- nimble_output %>%
   left_join(true_occ_paired %>% select(high_name, type, true_perc_change, rep) %>%
               mutate(rep = as.integer(rep))) %>%
+  left_join(left_tail_ci %>% mutate(rep = as.integer(rep))) %>%
   # pivot_longer(starts_with("ci"), names_to = "ci_type", values_to = "ci_value") %>%
   # mutate(ci_low = (mean - abs(ci_value)), ci_high = (mean + abs(ci_value))) %>%
   rowwise() %>%
   mutate(ci_two_tail = between(true_perc_change, ci025, ci97.5) & !between(0,  ci025, ci97.5),
+         ci_any_decline = !between(0,  ci025, ci97.5),
+         ci_left_tail = between(true_perc_change, ci05, ci100) & !between(0,  ci05, ci100),
          bias = true_perc_change - mean) %>%
   group_by(high_name, type) %>%
   summarize(ci_two_tail = sum(ci_two_tail)/n(),
+            ci_any_decline = sum(ci_any_decline)/n(),
+            ci_left_tail = sum(ci_left_tail)/n(),
             bias = mean(bias),
             rep_count = n()) %>%
   left_join(sim_map_names %>% select(high_name, total_n, psi, phi, p) %>% distinct()) %>%

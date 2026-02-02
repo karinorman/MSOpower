@@ -267,13 +267,14 @@ ggsave(here::here("figures/occ_trend_plot_srm.jpg"), occ_trend_plot, width = 8, 
 
 power_crit_plt <- srm_power_check %>%
   filter(type == "recursive") %>%
-  pivot_longer(c(ci_two_tail, ci_any_decline), names_to = "ci_type", values_to = "power") %>%
+  pivot_longer(c(ci_two_tail, ci_any_decline, ci_left_tail), names_to = "ci_type", values_to = "power") %>%
   #filter(total_n < 1501) %>%
   left_join(sim_scenarios_table, by = c("phi", "p", "psi" = "psi_high")) %>%
   mutate(sim_type = paste0(simulation_scenario, ":  \u03A8 = ", psi, ", \u03C6 = ", phi, ", p = ", p),
          type_label = case_when(
            ci_type == "ci_two_tail" ~ "Two Tail",
            ci_type == "ci_any_decline" ~ "Any Decline",
+           ci_type == "ci_left_tail" ~ "Left Tail",
          )) %>%
   #filter(CI_type == .x) %>%
   ggplot(aes(x = total_n, y = power)) +
