@@ -65,8 +65,7 @@ output_files <- data.frame(files = list.files(paste0(path, "/hier_summary/")),
 nimble_output <- purrr::pmap_dfr(output_files %>% select(scenario_id, file_paths), function(scenario_id, file_paths) {
   read.csv(file_paths) %>%
     filter(parameter == "perc_change") %>%
-    select(mean, ci025 = X2.5., ci97.5 = X97.5., scenario_id, rep) %>%
-    mutate(scenario_id = scenario_id)
+    select(mean, ci025 = X2.5., ci97.5 = X97.5., scenario_id, rep)
   })
 
 # get dataframe of sims and reps we've already done
@@ -94,8 +93,8 @@ sim_data_files <- full_join(high_data_files, low_data_files) %>%
   filter(!is.na(high_name), !is.na(low_name))
 
 # get true occupancy
-true_occ <- pmap_dfr(sim_data_files %>% select(scenario_num = scenario_id, rep_num = rep), function(scenario_num, rep_num){
-  
+true_occ <- pmap_dfr(sim_data_files %>% select(scenario_num = scenario_id, rep_num = rep) %>% distinct(), function(scenario_num, rep_num){
+  browser()
   scenario_files <- sim_data_files %>% 
     select(high_name, rep, low_name, scenario_id) %>% 
     filter(scenario_id == scenario_num, rep == rep_num)
@@ -114,10 +113,7 @@ true_occ <- pmap_dfr(sim_data_files %>% select(scenario_num = scenario_id, rep_n
   select(scenario_id, rep, true_perc_change)
 
 perc_change_check <- nimble_output %>%
-  left_join(true_occ %>% select(scenario_id, true_perc_change, rep) %>%
-              mutate(rep = as.integer(rep))) %>%
-  # pivot_longer(starts_with("ci"), names_to = "ci_type", values_to = "ci_value") %>%
-  # mutate(ci_low = (mean - abs(ci_value)), ci_high = (mean + abs(ci_value))) %>%
+  left_join(true_occ %>% mutate(rep = as.integer(rep))) %>%
   rowwise() %>%
   mutate(ci_two_tail = between(true_perc_change, ci025, ci97.5) & !between(0,  ci025, ci97.5)) %>%
   group_by(scenario_id) %>%
