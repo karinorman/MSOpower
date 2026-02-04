@@ -2,6 +2,7 @@ library(dplyr)
 library(tidyr)
 library(ggplot2)
 library(patchwork)
+library(cowplot)
 
 # trend gen comparison data for SRM EMU
 srm_power_check <- read.csv(here::here("data/nimble_power_check_SRM.csv"))
@@ -39,24 +40,24 @@ nimble_srm_plt <- srm_power_check %>%
   mutate(sim_type = paste0(simulation_scenario, ":  \u03A8 = ", psi, ", \u03C6 = ", phi, ", p = ", p),
          type_label = case_when(
            type == "constant_phi" ~ "Constant Survival",
-           type == "equilibrium" ~ "Equilibrium",
+           type == "equilibrium" ~ "Equilibrium ",
            type == "recursive" ~ "Recursive"
          )) %>%
   #filter(CI_type == .x) %>%
   ggplot(aes(x = total_n, y = ci_two_tail)) +
   geom_line(aes(color = sim_type, linetype = sim_type), linewidth = 0.75) +
-  geom_vline(xintercept = 300) +
-  geom_vline(xintercept = 420) +
-  geom_vline(xintercept = 560) +
-  geom_vline(xintercept = 700) +
-  geom_vline(xintercept = 1000) +
-  geom_vline(xintercept = 1500) +
+  # geom_vline(xintercept = 300) +
+  # geom_vline(xintercept = 420) +
+  # geom_vline(xintercept = 560) +
+  # geom_vline(xintercept = 700) +
+  # geom_vline(xintercept = 1000) +
+  # geom_vline(xintercept = 1500) +
   facet_wrap(~type_label, scales = "free_x") +
   theme_classic() +
   scale_colour_discrete("", type = rep(c("#8A6240", "#87A96B", "#28587B", "#c9673a"), each = 2)) +
   scale_linetype_manual("", values=c(2,1,2,1,2,1,2,1)) +
   geom_hline(yintercept = 0.9, color = "darkgrey", linetype = "dashed", linewidth = 1) +
-  theme(legend.position = "inside", legend.position.inside = c(0.9, 0.3),
+  theme(#legend.position = "inside", legend.position.inside = c(0.9, 0.3),
         legend.text=element_text(size=12),
         legend.key.width = unit(1,"cm"),
         text=element_text(size=14),
@@ -65,7 +66,7 @@ nimble_srm_plt <- srm_power_check %>%
         axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
         axis.title.x = element_text(margin = margin(t = 20, r = 0, b = 0, l = 0)),
         strip.background = element_blank(),
-        strip.text = element_text(size = 15)
+        strip.text = element_text(size = 13)
   ) +
   guides(linetype = guide_legend(override.aes = list(linewidth = 1))# byrow = TRUE),
          #color = guide_legend(byrow = TRUE)
@@ -302,6 +303,60 @@ power_crit_plt <- srm_power_check %>%
   xlab("Sample Size")
 
 ggsave(here::here("figures/SRM_trendgen_power.png"), nimble_srm_plt, width = 17, height = 8)
+
+
+###########################################
+######## comparison of thresholds  ########
+###########################################
+
+threshold_df <- read.csv(here::here("data/srm_trendgen_power_thresholds.csv"))
+
+threshold_plot <- threshold_df %>%
+  mutate(shape_var = paste0(type, "_", line_id)) %>%
+  ggplot() +
+  geom_point(aes(x = as.factor(line_id), y = threshold, color = as.factor(line_id), shape = shape_var), size = 4) +
+  scale_colour_discrete("", type = rep(c("#8A6240", "#87A96B", "#28587B", "#c9673a"), each = 2)) +
+  scale_shape_manual("", values= rep(c(1, 19, 2, 17, 0, 15), 4)) +
+  ylab("Threshold Sample Size") +
+  xlab("Scenario") +
+  theme_classic() +
+  theme(legend.position = "none",
+        legend.text=element_text(size=12),
+        legend.key.width = unit(1,"cm"),
+        text=element_text(size=14),
+        #legend.key.spacing.y = unit(0.5, 'cm'),
+        panel.spacing = unit(30, "pt"),
+        axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
+        axis.title.x = element_text(margin = margin(t = 20, r = 0, b = 0, l = 0)))
+
+legend_plot <- threshold_df %>%
+  mutate(type_label = case_when(
+    type == "constant_phi" ~ "Constant Survival",
+    type == "equilibrium" ~ "Equilibrium",
+    type == "recursive" ~ "Recursive"
+  )) %>%
+  #mutate(shape_var = paste0(type, "_", line_id)) %>%
+  ggplot() +
+  geom_point(aes(x = as.factor(line_id), y = threshold, shape = type_label), color = "grey", size = 3) +
+  theme_classic() +
+  theme(legend.title = element_blank(),
+        legend.text=element_text(size=12),
+        legend.key.width = unit(1,"cm"),
+        text=element_text(size=14),
+        legend.key.spacing.y = unit(0.5, 'cm'),
+        #panel.spacing = unit(30, "pt"),
+        axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
+        axis.title.x = element_text(margin = margin(t = 20, r = 0, b = 0, l = 0)))
+
+legend <- get_legend(legend_plot)
+
+bottom_row <- plot_grid(threshold_plot, legend, nrow = 1, rel_widths = c(1, .2))
+
+trend_eval_plt <- plot_grid(nimble_srm_plt, bottom_row, nrow = 2, labels = "AUTO")
+
+save_plot(here::here("figures/trend_eval.png"), trend_eval_plt, nrow = 2, ncol = 2)
+
+
 
 
 
