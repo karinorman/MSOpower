@@ -227,7 +227,7 @@ left_tail_ci <- purrr::map_dfr(list.files(paste0(path, "/emu_posterior/")), ~rea
 perc_change_check <- nimble_output %>%
   left_join(true_occ_paired %>% select(high_name, type, true_perc_change, rep) %>%
               mutate(rep = as.integer(rep))) %>%
-  left_join(left_tail_ci %>% mutate(rep = as.integer(rep))) %>%
+  left_join(left_tail_ci %>% mutate(rep = as.integer(rep)) %>% select(-mean)) %>%
   # pivot_longer(starts_with("ci"), names_to = "ci_type", values_to = "ci_value") %>%
   # mutate(ci_low = (mean - abs(ci_value)), ci_high = (mean + abs(ci_value))) %>%
   rowwise() %>%
