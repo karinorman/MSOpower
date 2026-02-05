@@ -3,6 +3,7 @@ library(tidyr)
 library(ggplot2)
 library(patchwork)
 library(cowplot)
+library(ggpubr)
 
 # trend gen comparison data for SRM EMU
 srm_power_check <- read.csv(here::here("data/nimble_power_check_SRM.csv"))
@@ -61,7 +62,7 @@ nimble_srm_plt <- srm_power_check %>%
         legend.text=element_text(size=12),
         legend.key.width = unit(1,"cm"),
         text=element_text(size=14),
-        legend.key.spacing.y = unit(0.5, 'cm'),
+        legend.key.spacing.y = unit(0.3, 'cm'),
         panel.spacing = unit(30, "pt"),
         axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
         axis.title.x = element_text(margin = margin(t = 20, r = 0, b = 0, l = 0)),
@@ -311,10 +312,32 @@ ggsave(here::here("figures/SRM_trendgen_power.png"), nimble_srm_plt, width = 17,
 
 threshold_df <- read.csv(here::here("data/srm_trendgen_power_thresholds.csv"))
 
-threshold_plot <- threshold_df %>%
+bracket_ends <- threshold_df %>%
+  mutate(threshold = round(threshold)) %>%
+  group_by(line_id) %>%
+  mutate(difference = max(threshold) - min(threshold),
+         type_rank = case_when(
+           threshold == max(threshold) ~ "max",
+           threshold == min(threshold) ~ "min"
+         ),
+         xval = line_id + .25,
+         halfway = min(threshold) + (difference/2)) %>%
+  filter(!is.na(type_rank)) %>%
+  ungroup()
+
+bracket_df <- bracket_ends %>%
+  select(line_id, threshold, type_rank, xval, halfway, difference) %>%
+  pivot_wider(names_from = "type_rank", values_from = "threshold")
+
+threshold_plot <-
+  threshold_df %>%
   mutate(shape_var = paste0(type, "_", line_id)) %>%
   ggplot() +
-  geom_point(aes(x = as.factor(line_id), y = threshold, color = as.factor(line_id), shape = shape_var), size = 4) +
+  geom_point(data = bracket_ends, aes(x = xval, y = threshold), shape = 95, size = 5) +
+    geom_segment(data = bracket_df,
+                 aes(x = xval, y = max, xend = xval, yend = min)) +
+    geom_text(data = bracket_df, aes(x = (xval + .2), y = halfway, label = difference)) +
+  geom_point(aes(x = line_id, y = threshold, color = as.factor(line_id), shape = shape_var), size = 4) +
   scale_colour_discrete("", type = rep(c("#8A6240", "#87A96B", "#28587B", "#c9673a"), each = 2)) +
   scale_shape_manual("", values= rep(c(1, 19, 2, 17, 0, 15), 4)) +
   ylab("Threshold Sample Size") +
@@ -327,7 +350,8 @@ threshold_plot <- threshold_df %>%
         #legend.key.spacing.y = unit(0.5, 'cm'),
         panel.spacing = unit(30, "pt"),
         axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
-        axis.title.x = element_text(margin = margin(t = 20, r = 0, b = 0, l = 0)))
+        axis.title.x = element_text(margin = margin(t = 20, r = 0, b = 0, l = 0))) +
+  scale_x_continuous(breaks = 1:8)
 
 legend_plot <- threshold_df %>%
   mutate(type_label = case_when(
@@ -354,11 +378,7 @@ bottom_row <- plot_grid(threshold_plot, legend, nrow = 1, rel_widths = c(1, .2))
 
 trend_eval_plt <- plot_grid(nimble_srm_plt, bottom_row, nrow = 2, labels = "AUTO")
 
-save_plot(here::here("figures/trend_eval.png"), trend_eval_plt, nrow = 2, ncol = 2)
-
-
-
-
+save_plot(here::here("figures/trend_eval.png"), trend_eval_plt, nrow = 2, ncol = 2, bg = 'white', base_asp = 1.5, base_height = 5)
 
 
 # # Power check figure for single trend generation option for all EMU's
