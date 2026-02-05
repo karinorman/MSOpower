@@ -131,9 +131,9 @@ nimble_output <- purrr::map_dfr(list.files(paste0(path, "/emu_summary/"), full.n
               mutate(type = "constant_phi"))
 
 # fully completed scenarios
-comp_scenario <- nimble_output %>% 
-  group_by(high_name, type) %>% 
-  summarize(rep_count = n_distinct(rep)) %>% 
+comp_scenario <- nimble_output %>%
+  group_by(high_name, type) %>%
+  summarize(rep_count = n_distinct(rep)) %>%
   filter(rep_count == 200)
 
 # get dataframe of sims and reps we've already done
@@ -249,6 +249,8 @@ perc_change_check <- nimble_output %>%
 readr::write_csv(perc_change_check, here::here("data/nimble_power_check_SRM.csv"))
 
 
+
+
 ### When simulation gets interrupted, restart here
 #################################################################
 ################## Equilibrium Trend Sim ########################
@@ -311,75 +313,48 @@ results <- parLapply(cl, chunk_list, fit_model_reps,
 
 ### Let's look at how the estimates converge on the true mean trend across sample sizes
 # get mean true occurrence across replicates for each scenario/emu/sample size
-library(ggplot2)
-
-mean_true_trend <- true_occ %>%
-  left_join(sim_map_names %>%
-              select(high_name, total_n, psi, p, phi) %>% distinct()) %>%
-  group_by(high_name, low_name, total_n, psi, p, phi) %>%
-  summarize(mean_true_trend = mean(true_perc_change)) %>%
-  group_by(psi, p, phi) %>%
-  mutate(scenario = cur_group_id()) %>%
-  separate(high_name, c("emu", "sim_num"), sep = "_", remove = FALSE)
-
-est_trend_reps <-  nimble_output %>%
-  select(mean, high_name, rep) %>%
-  left_join(sim_map_names %>%
-              select(high_name, low_name, total_n, psi, p, phi) %>% distinct()) %>%
-  group_by(psi, p, phi) %>%
-  mutate(scenario = cur_group_id()) %>%
-  separate(high_name, c("emu", "sim_num"), sep = "_", remove = FALSE)
-
-mean_est_trend <- est_trend_reps %>%
-  group_by(high_name, low_name, total_n, psi, p, phi, scenario, emu) %>%
-  summarize(mean_est_trend = mean(mean))
-
-mean_precision <- nimble_output %>%
-  mutate(width = ci97.5 - ci025) %>%
-  group_by(high_name) %>%
-  summarize(mean_width = mean(width)) %>%
-  left_join(sim_map_names %>%
-              select(high_name, low_name, total_n, psi, p, phi) %>% distinct()) %>%
-  group_by(psi, p, phi) %>%
-  mutate(scenario = cur_group_id()) %>%
-  separate(high_name, c("emu", "sim_num"), sep = "_", remove = FALSE)
-
-est_trend_reps %>%
-  filter(scenario == 7, emu == "BRE") %>%
-  ggplot() +
-  geom_point(aes(x = total_n, y = mean)) +
-  ylim(c(-2, 2)) +
-  geom_line(data = mean_true_trend %>% filter(scenario == 7, emu == "BRE"),
-            aes(x = total_n, y = mean_true_trend), color = "red") +
-  geom_line(data = mean_est_trend %>% filter(scenario == 7, emu == "BRE"),
-            aes(x = total_n, y = mean_est_trend), color = "blue") +
-  theme_classic()
-
-# # for when the whole thing doesn't run in one go
-# missing_runs <- perc_change_check %>%
-#   filter(rep_count == 100) %>%
-#   select(-c(sim_num, ci_two_tail, rep_count, line_id, emu)) %>%
-#   mutate(finished = TRUE) %>%
-#   right_join(sim_map_names) %>%
-#   filter(is.na(finished)) %>%
-#   select(-finished)
+# library(ggplot2)
 #
-# ncores <- 50
-# cl <- makeCluster(ncores, type = "PSOCK")
-# clusterExport(cl, c('init_model', 'missing_runs', 'sim_dataset', 'sample_data'))
-# capture <- clusterEvalQ(cl, {
-#   library(nimbleEcology)
-#   library(magrittr)
-#   library(purrr)
-#   library(dplyr)
-# })
+# mean_true_trend <- true_occ %>%
+#   left_join(sim_map_names %>%
+#               select(high_name, total_n, psi, p, phi) %>% distinct()) %>%
+#   group_by(high_name, low_name, total_n, psi, p, phi) %>%
+#   summarize(mean_true_trend = mean(true_perc_change)) %>%
+#   group_by(psi, p, phi) %>%
+#   mutate(scenario = cur_group_id()) %>%
+#   separate(high_name, c("emu", "sim_num"), sep = "_", remove = FALSE)
 #
-# simn = 100
+# est_trend_reps <-  nimble_output %>%
+#   select(mean, high_name, rep) %>%
+#   left_join(sim_map_names %>%
+#               select(high_name, low_name, total_n, psi, p, phi) %>% distinct()) %>%
+#   group_by(psi, p, phi) %>%
+#   mutate(scenario = cur_group_id()) %>%
+#   separate(high_name, c("emu", "sim_num"), sep = "_", remove = FALSE)
 #
-# # this uses the scenario as the level of parallelization, not chunk, so have to change
-# # the dataframe filter statement for it to work
-# chunk_list <- unique(missing_runs$high_name)
-# results <- parLapply(cl, chunk_list, fit_model_reps,
-#                      reps = simn, n_year = 10, n_visit = 2,
-#                      data = missing_runs)
+# mean_est_trend <- est_trend_reps %>%
+#   group_by(high_name, low_name, total_n, psi, p, phi, scenario, emu) %>%
+#   summarize(mean_est_trend = mean(mean))
 #
+# mean_precision <- nimble_output %>%
+#   mutate(width = ci97.5 - ci025) %>%
+#   group_by(high_name) %>%
+#   summarize(mean_width = mean(width)) %>%
+#   left_join(sim_map_names %>%
+#               select(high_name, low_name, total_n, psi, p, phi) %>% distinct()) %>%
+#   group_by(psi, p, phi) %>%
+#   mutate(scenario = cur_group_id()) %>%
+#   separate(high_name, c("emu", "sim_num"), sep = "_", remove = FALSE)
+#
+# est_trend_reps %>%
+#   filter(scenario == 7, emu == "BRE") %>%
+#   ggplot() +
+#   geom_point(aes(x = total_n, y = mean)) +
+#   ylim(c(-2, 2)) +
+#   geom_line(data = mean_true_trend %>% filter(scenario == 7, emu == "BRE"),
+#             aes(x = total_n, y = mean_true_trend), color = "red") +
+#   geom_line(data = mean_est_trend %>% filter(scenario == 7, emu == "BRE"),
+#             aes(x = total_n, y = mean_est_trend), color = "blue") +
+#   theme_classic()
+#
+
