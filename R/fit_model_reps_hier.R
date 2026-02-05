@@ -81,6 +81,7 @@ fit_model_reps_hier <- function(chunk, reps, n_year, n_visit, data){
   dir.create(paste0(path, "/hier_simulated_data"))
 
   for (i in 1:reps){
+    #browser()
     
     # get annual noise for all EMU's so that it varies only by year (and not EmU)
     phi_noise_vec <- rnorm((n_year-1), 0, unique(map_df$sd_phi))
@@ -168,9 +169,29 @@ fit_model_reps_hier <- function(chunk, reps, n_year, n_visit, data){
 }
 
 sample_data <- function(data, sample_size){
-  data_ids <- unique(data$site_id)
-  samp_data <- data %>%
-    filter(site_id %in% sample(data_ids, sample_size, replace = FALSE))
+  
+  # get even sample across emus
+  n_emu <- n_distinct(data$emu)
+  emu_samp_size <- ceiling(sample_size/n_emu)
+  
+  # get site_id's for those sampled
+  samp_sites <- data %>%
+    filter(visit == 1) %>%
+    group_by(emu) %>%
+    slice_sample(n = emu_samp_size, replace = FALSE) %>%
+    pull(site_id)
+  
+  # check that the rounded sample size gets us the right number
+  realized_samp_n <- length(samp_sites)
+  
+  if (realized_samp_n != sample_size){
+    remove_n <- realized_samp_n - sample_size
+    
+    remove_index <- sample(1:realized_samp_n, remove_n)
+    samp_sites <- samp_sites[-remove_index]
+  }
+  
+  return(data %>% filter(site_id %in% samp_sites))
 }
 
 # function to initialize a model object for a given sample size
