@@ -151,7 +151,7 @@ trend_gen_df <- indv_srm_true_occ %>%
 
 
 
-pal <- c("#8A6240", "#87A96B", "#28587B", "#c9673a")
+pal <- c("#392759", "#EC9A29", "#A8201A")
 
 high_occ_plot <- trend_gen_df %>%
   filter(psi == 0.6) %>%
@@ -163,7 +163,7 @@ high_occ_plot <- trend_gen_df %>%
   #facet_wrap(~sd_phi, nrow = 1) +
   ylim(c(0.4, 0.65)) +
   ylab("Occupancy, \u03A8") +
-  scale_colour_manual("", values = rep(pal[2:4], each = 2)) +
+  scale_colour_manual("", values = rep(pal, each = 2)) +
   scale_linetype_manual("", values=c(2,1,2,1,2,1)) +
   geom_segment(aes(x = -0.5, xend = 10.25, y = 0.45, yend = 0.45), linetype = "dashed", color = "grey") +
   geom_segment(aes(x = -0.5, xend = 10.25, y = 0.6, yend = 0.6), linetype = "dashed", color = "grey") +
@@ -197,7 +197,7 @@ med_occ_plot <- trend_gen_df %>%
   #facet_wrap(~sd_phi, nrow = 1) +
   ylim(c(0.3, 0.457)) +
   ylab("Occupancy, \u03A8") +
-  scale_colour_manual("", values = rep(pal[2:4], each = 2)) +
+  scale_colour_manual("", values = rep(pal, each = 2)) +
   scale_linetype_manual("", values=c(2,1,2,1,2,1)) +
   geom_segment(aes(x = -0.5, xend = 10.25, y = 0.3225, yend = 0.3225), linetype = "dashed", color = "grey") +
   geom_segment(aes(x = -0.5, xend = 10.25, y = 0.43, yend = 0.43), linetype = "dashed", color = "grey") +
@@ -231,7 +231,7 @@ low_occ_plot <- trend_gen_df %>%
   #facet_wrap(~sd_phi, nrow = 1) +
   ylim(c(0.3, 0.457)) +
   ylab("Occupancy, \u03A8") +
-  scale_colour_manual("", values = rep(pal[2:4], each = 2)) +
+  scale_colour_manual("", values = rep(pal, each = 2)) +
   scale_linetype_manual("", values=c(2,1,2,1,2,1)) +
   geom_segment(aes(x = -0.5, xend = 10.25, y = 0.03, yend = 0.03), linetype = "dashed", color = "grey") +
   geom_segment(aes(x = -0.5, xend = 10.25, y = 0.0225, yend = 0.0225), linetype = "dashed", color = "grey") +
