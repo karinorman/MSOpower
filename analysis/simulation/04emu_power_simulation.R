@@ -154,7 +154,10 @@ post_df <- perc_change_check %>%
   group_by(emu, psi, phi, p) %>%
   filter(distance == min(distance)) %>%
   rename(post = ci_two_tail, post_n = total_n) %>%
-  select(-distance)
+  select(-distance) %>%
+  # for some scenarios more than one sample size has the same power, need to filter
+  group_by(emu, psi, phi, p) %>%
+  filter(post_n == min(post_n))
 
 threshold_df <- left_join(pre_df, post_df) %>%
   mutate(slope = (post - pre)/(post_n - pre_n),
