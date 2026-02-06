@@ -4,9 +4,20 @@ library(dplyr)
 library(terra)
 library(tidyterra)
 library(sf)
+library(ggplot2)
 
 pacs <- vect(here::here("data/MSO_PACs/MSO_PACs.shp")) %>%
   project("epsg:5070")
+
+state_basemap <- rnaturalearth::ne_states(iso_a2 = "US") %>%
+  vect() %>%
+  project("epsg:5070") %>%
+  filter(name %in% c( "Arizona", "Utah", "Texas", "Colorado", "New Mexico"))
+
+ggplot() +
+  geom_spatvector(data = pacs) +
+  geom_spatvector(data = state_basemap, fill = "transparent") +
+  theme_void()
 
 landcover <- rast(here::here("data/LF2023_EVT_240_CONUS/Tif/LC23_EVT_240.tif"))
 

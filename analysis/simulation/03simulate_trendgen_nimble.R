@@ -248,7 +248,36 @@ perc_change_check <- nimble_output %>%
 
 readr::write_csv(perc_change_check, here::here("data/nimble_power_check_SRM.csv"))
 
+# get before and after crossing the power threshold
+pre_df <- perc_change_check %>%
+  select(emu, type, line_id, ci_two_tail, total_n, psi, phi, p) %>%
+  mutate(distance = ci_two_tail - 0.90) %>%
+  filter(distance < 0) %>%
+  group_by(emu, psi, phi, p, type) %>%
+  filter(abs(distance) == min(abs(distance))) %>%
+  rename(pre = ci_two_tail, pre_n = total_n) %>%
+  select(-distance)
 
+post_df <- perc_change_check %>%
+  select(emu, type, line_id, ci_two_tail, total_n, psi, phi, p) %>%
+  mutate(distance = ci_two_tail - 0.90) %>%
+  filter(distance > 0) %>%
+  group_by(emu, psi, phi, p, type) %>%
+  filter(distance == min(distance)) %>%
+  rename(post = ci_two_tail, post_n = total_n) %>%
+  select(-distance) %>%
+  # for some scenarios more than one sample size has the same power, need to filter
+  group_by(type, line_id) %>%
+  filter(post_n == min(post_n))
+
+# get data frame with pre and post power threshold points
+# calculate the exact threshold
+threshold_df <- left_join(pre_df, post_df) %>%
+  mutate(slope = (post - pre)/(post_n - pre_n),
+         intercept = post - (slope*post_n),
+         threshold = (.9 - intercept)/slope)
+
+readr::write_csv(threshold_df, here::here("data/srm_trendgen_power_thresholds.csv"))
 
 
 ### When simulation gets interrupted, restart here

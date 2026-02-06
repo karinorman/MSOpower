@@ -2,6 +2,8 @@ library(dplyr)
 library(tidyr)
 library(ggplot2)
 library(patchwork)
+library(cowplot)
+library(ggpubr)
 
 # trend gen comparison data for SRM EMU
 srm_power_check <- read.csv(here::here("data/nimble_power_check_SRM.csv"))
@@ -39,33 +41,33 @@ nimble_srm_plt <- srm_power_check %>%
   mutate(sim_type = paste0(simulation_scenario, ":  \u03A8 = ", psi, ", \u03C6 = ", phi, ", p = ", p),
          type_label = case_when(
            type == "constant_phi" ~ "Constant Survival",
-           type == "equilibrium" ~ "Equilibrium",
+           type == "equilibrium" ~ "Equilibrium ",
            type == "recursive" ~ "Recursive"
          )) %>%
   #filter(CI_type == .x) %>%
   ggplot(aes(x = total_n, y = ci_two_tail)) +
   geom_line(aes(color = sim_type, linetype = sim_type), linewidth = 0.75) +
-  geom_vline(xintercept = 300) +
-  geom_vline(xintercept = 420) +
-  geom_vline(xintercept = 560) +
-  geom_vline(xintercept = 700) +
-  geom_vline(xintercept = 1000) +
-  geom_vline(xintercept = 1500) +
+  # geom_vline(xintercept = 300) +
+  # geom_vline(xintercept = 420) +
+  # geom_vline(xintercept = 560) +
+  # geom_vline(xintercept = 700) +
+  # geom_vline(xintercept = 1000) +
+  # geom_vline(xintercept = 1500) +
   facet_wrap(~type_label, scales = "free_x") +
   theme_classic() +
   scale_colour_discrete("", type = rep(c("#8A6240", "#87A96B", "#28587B", "#c9673a"), each = 2)) +
   scale_linetype_manual("", values=c(2,1,2,1,2,1,2,1)) +
   geom_hline(yintercept = 0.9, color = "darkgrey", linetype = "dashed", linewidth = 1) +
-  theme(legend.position = "inside", legend.position.inside = c(0.9, 0.3),
+  theme(#legend.position = "inside", legend.position.inside = c(0.9, 0.3),
         legend.text=element_text(size=12),
         legend.key.width = unit(1,"cm"),
         text=element_text(size=14),
-        legend.key.spacing.y = unit(0.5, 'cm'),
+        legend.key.spacing.y = unit(0.3, 'cm'),
         panel.spacing = unit(30, "pt"),
         axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
         axis.title.x = element_text(margin = margin(t = 20, r = 0, b = 0, l = 0)),
         strip.background = element_blank(),
-        strip.text = element_text(size = 15)
+        strip.text = element_text(size = 13)
   ) +
   guides(linetype = guide_legend(override.aes = list(linewidth = 1))# byrow = TRUE),
          #color = guide_legend(byrow = TRUE)
@@ -149,7 +151,7 @@ trend_gen_df <- indv_srm_true_occ %>%
 
 
 
-pal <- c("#8A6240", "#87A96B", "#28587B", "#c9673a")
+pal <- c("#392759", "#EC9A29", "#A8201A")
 
 high_occ_plot <- trend_gen_df %>%
   filter(psi == 0.6) %>%
@@ -161,7 +163,7 @@ high_occ_plot <- trend_gen_df %>%
   #facet_wrap(~sd_phi, nrow = 1) +
   ylim(c(0.4, 0.65)) +
   ylab("Occupancy, \u03A8") +
-  scale_colour_manual("", values = rep(pal[2:4], each = 2)) +
+  scale_colour_manual("", values = rep(pal, each = 2)) +
   scale_linetype_manual("", values=c(2,1,2,1,2,1)) +
   geom_segment(aes(x = -0.5, xend = 10.25, y = 0.45, yend = 0.45), linetype = "dashed", color = "grey") +
   geom_segment(aes(x = -0.5, xend = 10.25, y = 0.6, yend = 0.6), linetype = "dashed", color = "grey") +
@@ -195,7 +197,7 @@ med_occ_plot <- trend_gen_df %>%
   #facet_wrap(~sd_phi, nrow = 1) +
   ylim(c(0.3, 0.457)) +
   ylab("Occupancy, \u03A8") +
-  scale_colour_manual("", values = rep(pal[2:4], each = 2)) +
+  scale_colour_manual("", values = rep(pal, each = 2)) +
   scale_linetype_manual("", values=c(2,1,2,1,2,1)) +
   geom_segment(aes(x = -0.5, xend = 10.25, y = 0.3225, yend = 0.3225), linetype = "dashed", color = "grey") +
   geom_segment(aes(x = -0.5, xend = 10.25, y = 0.43, yend = 0.43), linetype = "dashed", color = "grey") +
@@ -229,7 +231,7 @@ low_occ_plot <- trend_gen_df %>%
   #facet_wrap(~sd_phi, nrow = 1) +
   ylim(c(0.3, 0.457)) +
   ylab("Occupancy, \u03A8") +
-  scale_colour_manual("", values = rep(pal[2:4], each = 2)) +
+  scale_colour_manual("", values = rep(pal, each = 2)) +
   scale_linetype_manual("", values=c(2,1,2,1,2,1)) +
   geom_segment(aes(x = -0.5, xend = 10.25, y = 0.03, yend = 0.03), linetype = "dashed", color = "grey") +
   geom_segment(aes(x = -0.5, xend = 10.25, y = 0.0225, yend = 0.0225), linetype = "dashed", color = "grey") +
@@ -266,7 +268,7 @@ ggsave(here::here("figures/occ_trend_plot_srm.jpg"), occ_trend_plot, width = 8, 
 ###########################################
 
 power_crit_plt <- srm_power_check %>%
-  filter(type == "recursive") %>%
+  #filter(type == "recursive") %>%
   pivot_longer(c(ci_two_tail, ci_any_decline, ci_left_tail), names_to = "ci_type", values_to = "power") %>%
   #filter(total_n < 1501) %>%
   left_join(sim_scenarios_table, by = c("phi", "p", "psi" = "psi_high")) %>%
@@ -275,20 +277,24 @@ power_crit_plt <- srm_power_check %>%
            ci_type == "ci_two_tail" ~ "Two Tail",
            ci_type == "ci_any_decline" ~ "Any Decline",
            ci_type == "ci_left_tail" ~ "Left Tail",
-         )) %>%
+         ),
+         gen_label = case_when(
+           type == "constant_phi" ~ "Constant Survival",
+           type == "equilibrium" ~ "Equilibrium",
+           type == "recursive" ~ "Recursive")) %>%
   #filter(CI_type == .x) %>%
   ggplot(aes(x = total_n, y = power)) +
   geom_line(aes(color = sim_type, linetype = sim_type), linewidth = 0.75) +
-  facet_wrap(~type_label, scales = "free_x") +
+  facet_grid(type_label ~ gen_label, scales = "free_x") +
   theme_classic() +
   scale_colour_discrete("", type = rep(c("#8A6240", "#87A96B", "#28587B", "#c9673a"), each = 2)) +
   scale_linetype_manual("", values=c(2,1,2,1,2,1,2,1)) +
   geom_hline(yintercept = 0.9, color = "darkgrey", linetype = "dashed", linewidth = 1) +
-  theme(legend.position = "inside", legend.position.inside = c(0.9, 0.3),
+  theme(#legend.position = "inside", legend.position.inside = c(0.9, 0.3),
         legend.text=element_text(size=12),
         legend.key.width = unit(1,"cm"),
         text=element_text(size=14),
-        legend.key.spacing.y = unit(0.5, 'cm'),
+        legend.key.spacing.y = unit(0.3, 'cm'),
         panel.spacing = unit(30, "pt"),
         axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
         axis.title.x = element_text(margin = margin(t = 20, r = 0, b = 0, l = 0)),
@@ -301,9 +307,82 @@ power_crit_plt <- srm_power_check %>%
   ylab("Percent Success") +
   xlab("Sample Size")
 
-ggsave(here::here("figures/SRM_trendgen_power.png"), nimble_srm_plt, width = 17, height = 8)
+ggsave(here::here("figures/SRM_trendgen_power.png"), power_crit_plt, width = 15, height = 12)
 
 
+###########################################
+######## comparison of thresholds  ########
+###########################################
+
+threshold_df <- read.csv(here::here("data/srm_trendgen_power_thresholds.csv"))
+
+bracket_ends <- threshold_df %>%
+  mutate(threshold = round(threshold)) %>%
+  group_by(line_id) %>%
+  mutate(difference = max(threshold) - min(threshold),
+         type_rank = case_when(
+           threshold == max(threshold) ~ "max",
+           threshold == min(threshold) ~ "min"
+         ),
+         xval = line_id + .25,
+         halfway = min(threshold) + (difference/2)) %>%
+  filter(!is.na(type_rank)) %>%
+  ungroup()
+
+bracket_df <- bracket_ends %>%
+  select(line_id, threshold, type_rank, xval, halfway, difference) %>%
+  pivot_wider(names_from = "type_rank", values_from = "threshold")
+
+threshold_plot <-
+  threshold_df %>%
+  mutate(shape_var = paste0(type, "_", line_id)) %>%
+  ggplot() +
+  geom_point(data = bracket_ends, aes(x = xval, y = threshold), shape = 95, size = 5) +
+    geom_segment(data = bracket_df,
+                 aes(x = xval, y = max, xend = xval, yend = min)) +
+    geom_text(data = bracket_df, aes(x = (xval + .2), y = halfway, label = difference)) +
+  geom_point(aes(x = line_id, y = threshold, color = as.factor(line_id), shape = shape_var), size = 4) +
+  scale_colour_discrete("", type = rep(c("#8A6240", "#87A96B", "#28587B", "#c9673a"), each = 2)) +
+  scale_shape_manual("", values= rep(c(1, 19, 2, 17, 0, 15), 4)) +
+  ylab("Threshold Sample Size") +
+  xlab("Scenario") +
+  theme_classic() +
+  theme(legend.position = "none",
+        legend.text=element_text(size=12),
+        legend.key.width = unit(1,"cm"),
+        text=element_text(size=14),
+        #legend.key.spacing.y = unit(0.5, 'cm'),
+        panel.spacing = unit(30, "pt"),
+        axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
+        axis.title.x = element_text(margin = margin(t = 20, r = 0, b = 0, l = 0))) +
+  scale_x_continuous(breaks = 1:8)
+
+legend_plot <- threshold_df %>%
+  mutate(type_label = case_when(
+    type == "constant_phi" ~ "Constant Survival",
+    type == "equilibrium" ~ "Equilibrium",
+    type == "recursive" ~ "Recursive"
+  )) %>%
+  #mutate(shape_var = paste0(type, "_", line_id)) %>%
+  ggplot() +
+  geom_point(aes(x = as.factor(line_id), y = threshold, shape = type_label), color = "grey", size = 3) +
+  theme_classic() +
+  theme(legend.title = element_blank(),
+        legend.text=element_text(size=12),
+        legend.key.width = unit(1,"cm"),
+        text=element_text(size=14),
+        legend.key.spacing.y = unit(0.5, 'cm'),
+        #panel.spacing = unit(30, "pt"),
+        axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
+        axis.title.x = element_text(margin = margin(t = 20, r = 0, b = 0, l = 0)))
+
+legend <- get_legend(legend_plot)
+
+bottom_row <- plot_grid(threshold_plot, legend, nrow = 1, rel_widths = c(1, .2))
+
+trend_eval_plt <- plot_grid(nimble_srm_plt, bottom_row, nrow = 2, labels = "AUTO")
+
+save_plot(here::here("figures/trend_eval.png"), trend_eval_plt, nrow = 2, ncol = 2, bg = 'white', base_asp = 1.5, base_height = 5)
 
 
 # # Power check figure for single trend generation option for all EMU's
