@@ -133,6 +133,7 @@ perc_change_check <- nimble_output %>%
             rep_count = n()) %>%
   left_join(sim_df %>% select(chunk_num, total_n, psi, phi, p) %>% distinct()) 
 
+readr::write_csv(perc_change_check, here::here("data/nimble_power_check_hier_landscape.csv"))
 
 ## RUN MISSING ONES ##
 # comp_chunk <- perc_change_check %>% 
