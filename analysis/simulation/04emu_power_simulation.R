@@ -141,21 +141,24 @@ readr::write_csv(perc_change_check, here::here("data/nimble_power_check_emu.csv"
 pre_df <- perc_change_check %>%
   select(emu, ci_two_tail, total_n, psi, phi, p) %>%
   mutate(distance = ci_two_tail - 0.90) %>%
-  filter(p == 0.8, distance < 0) %>%
+  filter(distance < 0) %>%
   group_by(emu, psi, phi, p) %>%
   filter(abs(distance) == min(abs(distance))) %>%
-  mutate(threshold = "pre")
+  rename(pre = ci_two_tail, pre_n = total_n) %>%
+  select(-distance)
 
 post_df <- perc_change_check %>%
   select(emu, ci_two_tail, total_n, psi, phi, p) %>%
   mutate(distance = ci_two_tail - 0.90) %>%
-  filter(p == 0.8, distance > 0) %>%
+  filter(distance > 0) %>%
   group_by(emu, psi, phi, p) %>%
   filter(distance == min(distance)) %>%
-  mutate(threshold = "post")
+  rename(post = ci_two_tail, post_n = total_n) %>%
+  select(-distance)
 
-threshold_df <- bind_rows(pre_df, post_df) %>%
-  select(-distance) %>%
-  rename(power = ci_two_tail, n = total_n)
+threshold_df <- left_join(pre_df, post_df) %>%
+  mutate(slope = (post - pre)/(post_n - pre_n),
+         intercept = post - (slope*post_n),
+         threshold = (.9 - intercept)/slope)
 
 readr::write_csv(threshold_df, here::here("data/emu_power_thresholds.csv"))
