@@ -13,10 +13,10 @@ simn = 100
 
 load("data/sim_map_hier.rda")
 
-# now instead of generating each EMU separately, let's do the whole landscape in one go, 
+# now instead of generating each EMU separately, let's do the whole landscape in one go,
 # maintaining the high/low ratio
 hex_count <- sim_map_hier %>%
-  select(emu, high_hex_count, low_hex_count) %>% 
+  select(emu, high_hex_count, low_hex_count) %>%
   distinct()
 
 landscape_hex_count <- hex_count %>%
@@ -26,12 +26,12 @@ landscape_hex_count <- hex_count %>%
 # let's get all the rows to fill out a full curve
 set.seed(5242342)
 
-sim_df <-  sim_map_hier %>% 
+sim_df <-  sim_map_hier %>%
   select(chunk_num = scenario_id, total_n, high_n, low_n, psi, phi, sd_phi, sd_gamma, p, perc_red, low_psi) %>%
   # this one is particularly biased
   #filter(psi == 0.6, phi == 0.8, p == 0.4, total_n < 3500) %>%
   distinct() %>%
-  mutate(high_hex_count = landscape_hex_count$high_hex_count, 
+  mutate(high_hex_count = landscape_hex_count$high_hex_count,
          low_hex_count = landscape_hex_count$low_hex_count,
          seed = 1 + floor(runif(n()) * 100000))
 
@@ -110,7 +110,7 @@ sim_data_files <- data.frame(files = list.files(paste0(path, "/emu_simulated_dat
 # get true occurrence for each scenario and rep
 true_occ_paired <- pmap_dfr(sim_data_files %>% select(chunk_num, rep) %>% distinct(),
                             function(chunk_num, rep){
-                              
+
                               #browser()
                               readRDS(paste0(path, "/emu_simulated_data", "/", "high", "_", chunk_num, "_", rep, "_simdata.rds"))$true_occ %>%
                                 bind_rows(readRDS(paste0(path, "/emu_simulated_data", "/", "low", "_", chunk_num, "_", rep, "_simdata.rds"))$true_occ) %>%
@@ -131,13 +131,45 @@ perc_change_check <- nimble_output %>%
   summarize(ci_two_tail = sum(ci_two_tail)/n(),
             bias = mean(bias),
             rep_count = n()) %>%
-  left_join(sim_df %>% select(chunk_num, total_n, psi, phi, p) %>% distinct()) 
+  left_join(sim_df %>% select(chunk_num, total_n, psi, phi, p) %>% distinct())
 
 readr::write_csv(perc_change_check, here::here("data/nimble_power_check_hier_landscape.csv"))
 
 ## RUN MISSING ONES ##
-# comp_chunk <- perc_change_check %>% 
+# comp_chunk <- perc_change_check %>%
 #   filter(rep_count == 100) %>%
 #   pull(chunk_num)
-# 
+#
 # missing_chunks <- chunk_list[!chunk_list %in% comp_chunk]
+
+# get before and after crossing the power threshold
+pre_df <- perc_change_check %>%
+  select(ci_two_tail, total_n, psi, phi, p) %>%
+  mutate(distance = ci_two_tail - 0.90) %>%
+  filter(distance < 0) %>%
+  group_by(psi, phi, p) %>%
+  filter(abs(distance) == min(abs(distance))) %>%
+  rename(pre = ci_two_tail, pre_n = total_n) %>%
+  select(-distance)
+
+post_df <- perc_change_check %>%
+  select(ci_two_tail, total_n, psi, phi, p) %>%
+  mutate(distance = ci_two_tail - 0.90) %>%
+  filter(distance > 0) %>%
+  group_by(psi, phi, p) %>%
+  filter(distance == min(distance)) %>%
+  rename(post = ci_two_tail, post_n = total_n) %>%
+  select(-distance) %>%
+  # for some scenarios more than one sample size has the same power, need to filter
+  group_by(psi, phi, p) %>%
+  filter(post_n == min(post_n))
+
+# get data frame with pre and post power threshold points
+# calculate the exact threshold
+threshold_df <- left_join(pre_df, post_df) %>%
+  mutate(slope = (post - pre)/(post_n - pre_n),
+         intercept = post - (slope*post_n),
+         threshold = (.9 - intercept)/slope)
+
+readr::write_csv(threshold_df, here::here("data/hier_power_thresholds.csv"))
+

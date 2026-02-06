@@ -33,7 +33,8 @@ sim_scenarios_table <- data.frame(
   select(simulation_scenario,everything())
 
 ### Hierarchical Power ###
-hier_plot_df <- read.csv(here::here("data/nimble_power_check_hier.csv"))
+hier_plot_df <- read.csv(here::here("data/nimble_power_check_hier_landscape.csv")) %>%
+  mutate(scenario_id = chunk_num)
 
 hier_plot_df <- hier_plot_df %>%
   select(-scenario_id) %>%
@@ -53,7 +54,7 @@ hier_power_plt <- #purrr::pmap(ci_plotting_df, ~hier_plot_df %>%
   scale_colour_discrete("", type = rep(c("#8A6240", "#87A96B", "#28587B", "#c9673a"), each = 2)) +
   scale_linetype_manual("", values=c(2,1,2,1,2,1,2,1)) +
   geom_hline(yintercept = 0.9, color = "darkgrey", linetype = "dashed", linewidth = 1) +
-  geom_vline(xintercept = 2000, color = "darkgrey", linewidth = 1) +
+  #geom_vline(xintercept = 2000, color = "darkgrey", linewidth = 1) +
   theme(legend.position = "none",
         text=element_text(size=14),
         axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
@@ -83,12 +84,12 @@ power_plt <- power_eval %>%
   )) %>%
   ggplot(aes(x = total_n, y = ci_two_tail)) +
   geom_line(aes(color = sim_type, linetype = sim_type), linewidth = 0.75) +
-  geom_vline(xintercept = 300) +
-  geom_vline(xintercept = 420) +
-  geom_vline(xintercept = 560) +
-  geom_vline(xintercept = 700) +
-  geom_vline(xintercept = 930) +
-  geom_vline(xintercept = 1000) +
+  # geom_vline(xintercept = 300) +
+  # geom_vline(xintercept = 420) +
+  # geom_vline(xintercept = 560) +
+  # geom_vline(xintercept = 700) +
+  # geom_vline(xintercept = 930) +
+  # geom_vline(xintercept = 1000) +
   facet_wrap(~unit, scales = "free_x") +
   theme_classic() +
   scale_colour_discrete("", type = rep(c("#8A6240", "#87A96B", "#28587B", "#c9673a"), each = 2)) +
@@ -98,7 +99,7 @@ power_plt <- power_eval %>%
         legend.text=element_text(size=12),
         legend.key.width = unit(1,"cm"),
         text=element_text(size=14),
-        legend.key.spacing.y = unit(0.5, 'cm'),
+        legend.key.spacing.y = unit(0.3, 'cm'),
         panel.spacing = unit(30, "pt"),
         axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
         axis.title.x = element_text(margin = margin(t = 20, r = 0, b = 0, l = 0))
@@ -113,9 +114,10 @@ power_plt <- power_eval %>%
 
 power_join <- power_plt + plot_spacer() +
   (plot_spacer() + hier_power_plt + plot_spacer() + plot_layout(ncol = 1, heights = c(0.5,2,0.5))) +
-  plot_layout(nrow = 1, widths = c(2, 0.15, 1))
+  plot_layout(nrow = 1, widths = c(2, 0.15, 1)) +
+  plot_annotation(tag_levels = "A")
 
-ggsave(here::here("figures/power_plot_join.jpeg"), power_join, width = 23, height = 11.5)
+ggsave(here::here("figures/power_plot_join.jpeg"), power_join, width = 18, height = 9)
 
 # # get plots for different kinds of power checks
 # ggsave(here::here("figures/power_check_twotail.png"), power_plt[[1]], width = 16.5, height = 9.87)
