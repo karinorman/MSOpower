@@ -17,7 +17,7 @@ library(purrr)
 ## Fixed study characteristics
 nyear = 10
 n_vis = 2
-simn = 200
+simn = 100
 
 load("data/sim_map_hier.rda")
 
@@ -42,7 +42,7 @@ capture <- clusterEvalQ(cl, {
 })
 
 
-chunk_list <- unique(sim_map_hier$scenario_id)
+chunk_list <- sort(unique(sim_map_hier$scenario_id), decreasing = TRUE)
 results <- parLapply(cl, chunk_list, fit_model_reps_hier,
                      reps = simn, n_year = 10, n_visit = 2,
                      data = sim_map_hier)
