@@ -6,7 +6,7 @@ library(tidyterra)
 library(sf)
 library(ggplot2)
 
-pacs <- vect(here::here("data/MSO_PACs/MSO_PACs.shp")) %>%
+pacs <- vect(here::here("data/usfws_B074_V01_Strix_occidentalis_lucida_current_range/usfws_B074_V01_Strix_occidentalis_lucida_current_range.shp")) %>%
   project("epsg:5070")
 
 state_basemap <- rnaturalearth::ne_states(iso_a2 = "US") %>%
