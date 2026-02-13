@@ -33,8 +33,8 @@ sim_scenarios_table <- data.frame(
   select(simulation_scenario,everything())
 
 ### Hierarchical Power ###
-hier_plot_df <- read.csv(here::here("data/nimble_power_check_hier_landscape.csv")) %>%
-  mutate(scenario_id = chunk_num)
+hier_plot_df <- read.csv(here::here("data/nimble_power_check_hier.csv")) #%>%
+  #mutate(scenario_id = chunk_num)
 
 hier_plot_df <- hier_plot_df %>%
   select(-scenario_id) %>%

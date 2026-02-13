@@ -94,7 +94,7 @@ sim_data_files <- full_join(high_data_files, low_data_files) %>%
 
 # get true occupancy
 true_occ <- pmap_dfr(sim_data_files %>% select(scenario_num = scenario_id, rep_num = rep) %>% distinct(), function(scenario_num, rep_num){
-  browser()
+  #browser()
   scenario_files <- sim_data_files %>% 
     select(high_name, rep, low_name, scenario_id) %>% 
     filter(scenario_id == scenario_num, rep == rep_num)
@@ -124,3 +124,29 @@ perc_change_check <- nimble_output %>%
   # mutate(line_id = cur_group_id()) %>%
 
 readr::write_csv(perc_change_check, here::here("data/nimble_power_check_hier.csv"))
+
+
+### If some runs are missing ###
+# the secenarios that ran did all their replicates
+perc_change_check %>% filter(rep_count != 100) %>% dim()
+
+# which scenarios didn't run
+missing_sim_map <- sim_map_hier %>%
+  filter(!scenario_id %in% perc_change_check$scenario_id)
+
+ncores <- 13
+cl <- makeCluster(ncores, type = "PSOCK")
+clusterExport(cl, c('init_model', 'missing_sim_map', 'sim_dataset', 'sample_data', 'path'))
+capture <- clusterEvalQ(cl, {
+  library(nimbleEcology)
+  library(magrittr)
+  library(purrr)
+  library(dplyr)
+})
+
+
+chunk_list <- sort(unique(missing_sim_map$scenario_id), decreasing = TRUE)
+results <- parLapply(cl, chunk_list, fit_model_reps_hier,
+                     reps = simn, n_year = 10, n_visit = 2,
+                     data = missing_sim_map)
+
