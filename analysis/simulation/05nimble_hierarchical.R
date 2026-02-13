@@ -19,7 +19,30 @@ nyear = 10
 n_vis = 2
 simn = 100
 
+# get df of scenarios
 load("data/sim_map_hier.rda")
+
+# now instead of generating each EMU separately, let's do the whole landscape in one go,
+# maintaining the high/low ratio
+hex_count <- sim_map_hier %>%
+  select(emu, high_hex_count, low_hex_count) %>%
+  distinct()
+
+landscape_hex_count <- hex_count %>%
+  select(-emu) %>%
+  summarise(across(everything(), ~ sum(., na.rm = TRUE)))
+
+# let's get all the rows to fill out a full curve
+set.seed(5242342)
+
+sim_df <-  sim_map_hier %>%
+  select(chunk_num = scenario_id, total_n, high_n, low_n, psi, phi, sd_phi, sd_gamma, p, perc_red, low_psi) %>%
+  # this one is particularly biased
+  #filter(psi == 0.6, phi == 0.8, p == 0.4, total_n < 3500) %>%
+  distinct() %>%
+  mutate(high_hex_count = landscape_hex_count$high_hex_count,
+         low_hex_count = landscape_hex_count$low_hex_count,
+         seed = 1 + floor(runif(n()) * 100000))
 
 # directory to save outputs to
 path <- here::here("data/nimble/hierarchical_simulations")
@@ -31,9 +54,9 @@ path <- here::here("data/nimble/hierarchical_simulations")
 source(here::here("R/sim_dataset.R"))
 source(here::here("R/fit_model_reps_hier.R"))
 
-ncores <- 40
+ncores <- 13
 cl <- makeCluster(ncores, type = "PSOCK")
-clusterExport(cl, c('init_model', 'sim_map_hier', 'sim_dataset', 'sample_data', 'path'))
+clusterExport(cl, c('init_model', 'sim_df', 'sim_dataset', 'sample_data_hier', 'path', 'hex_count'))
 capture <- clusterEvalQ(cl, {
   library(nimbleEcology)
   library(magrittr)
@@ -42,111 +65,88 @@ capture <- clusterEvalQ(cl, {
 })
 
 
-chunk_list <- sort(unique(sim_map_hier$scenario_id), decreasing = TRUE)
-results <- parLapply(cl, chunk_list, fit_model_reps_hier,
-                     reps = simn, n_year = 10, n_visit = 2,
-                     data = sim_map_hier)
+chunk_list <- sort(unique(sim_df$chunk_num), decreasing = TRUE)
+results <- parLapply(cl, chunk_list, fit_model_reps_hier_working,
+                     reps = simn, n_year = nyear, n_visit = n_vis, data = sim_df,
+                     path = path, save_ending = "")
 
-# lapply(chunk_list, fit_model_reps_hier,
-#        reps = 100, n_year = 10, n_visit = 2,
-#        data = sim_map_hier)
+# results <- lapply(chunk_list, fit_model_reps_hier_working,
+#                   reps = simn, n_year = nyear, n_visit = n_vis, data = sim_df,
+#                   path = path, save_ending = "")
 
 ###########################################################
 ################## Processing runs ########################
 ###########################################################
 
 # read in estimates
-output_files <- data.frame(files = list.files(paste0(path, "/hier_summary/")),
-                           file_paths = list.files(paste0(path, "/hier_summary/"), full.names = TRUE)) %>%
-  separate(files, c("rep", "scenario_id")) %>%
-  mutate(across(c(rep, scenario_id), as.integer))
-
-
-nimble_output <- purrr::pmap_dfr(output_files %>% select(scenario_id, file_paths), function(scenario_id, file_paths) {
-  read.csv(file_paths) %>%
-    filter(parameter == "perc_change") %>%
-    select(mean, ci025 = X2.5., ci97.5 = X97.5., scenario_id, rep)
-  })
+nimble_output <- purrr::map_dfr(list.files(paste0(path, "/emu_summary/"), full.names = TRUE), ~read.csv(.x) %>%
+                                  filter(parameter == "perc_change") %>%
+                                  select(mean, ci025 = X2.5., ci97.5 = X97.5., chunk_num, rep))
 
 # get dataframe of sims and reps we've already done
-high_data_files <- data.frame(files = list.files(paste0(path, "/hier_simulated_data/")),
-                             file_paths = list.files(paste0(path, "/hier_simulated_data/"), full.names = TRUE)) %>%
-  separate(files, c("EMU", "sim_id", "rep", "scenario_id")) %>%
-  unite("high_name", c("EMU", "sim_id")) %>%
-  mutate(scenario_id = as.integer(scenario_id)) %>%
-  left_join(sim_map_hier %>% select(scenario_id, high_name, low_name)) %>%
-  #left_join(sim_map_hier %>% select(scenario_id, low_name), by = c("sim_id" = "low_name")) %>%
-  filter(!is.na(low_name)) %>%
-  select(-file_paths)
+sim_data_files <- data.frame(files = list.files(paste0(path, "/emu_simulated_data/"))) %>%
+  separate(files, c("occ_type", "chunk_num", "rep")) %>%
+  mutate(across(c(chunk_num, rep), as.numeric)) #%>%
+#pivot_wider(names_from = occ_type, values_from = )
 
-low_data_files <- data.frame(files = list.files(paste0(path, "/hier_simulated_data/")),
-                              file_paths = list.files(paste0(path, "/hier_simulated_data/"), full.names = TRUE)) %>%
-  separate(files, c("EMU", "sim_id", "rep", "scenario_id")) %>%
-  unite("low_name", c("EMU", "sim_id")) %>%
-  mutate(scenario_id = as.integer(scenario_id)) %>%
-  #left_join(sim_map_hier %>% select(scenario_id, high_name), by = c("sim_id" = "high_name", "scenario_id")) %>%
-  left_join(sim_map_hier %>% select(scenario_id, low_name, high_name)) %>%
-  filter(!is.na(high_name)) %>%
-  select(-file_paths)
-
-sim_data_files <- full_join(high_data_files, low_data_files) %>%
-  filter(!is.na(high_name), !is.na(low_name))
-
-# get true occupancy
-true_occ <- pmap_dfr(sim_data_files %>% select(scenario_num = scenario_id, rep_num = rep) %>% distinct(), function(scenario_num, rep_num){
-  #browser()
-  scenario_files <- sim_data_files %>% 
-    select(high_name, rep, low_name, scenario_id) %>% 
-    filter(scenario_id == scenario_num, rep == rep_num)
-  
-  bind_rows(map_dfr(unique(scenario_files$high_name), 
-                ~readRDS(paste0(path, "/hier_simulated_data/", .x, "_", rep_num, "_", scenario_num, "_simdata.rds"))$true_occ),
-            map_dfr(unique(scenario_files$low_name), 
-                ~readRDS(paste0(path, "/hier_simulated_data/", .x, "_", rep_num, "_", scenario_num, "_simdata.rds"))$true_occ),
-  ) %>% 
-    select(-site_id) %>%
-    ungroup() %>%
-    summarize(across(everything(), mean)) %>%
-    mutate(rep = rep_num, scenario_id = scenario_num)
-}) %>%
-  mutate(true_perc_change = (t10-t1)/t1) %>%
-  select(scenario_id, rep, true_perc_change)
+# get true occurrence for each scenario and rep
+true_occ_paired <- pmap_dfr(sim_data_files %>% select(chunk_num, rep) %>% distinct(),
+                            function(chunk_num, rep){
+                              #browser()
+                              readRDS(paste0(path, "/emu_simulated_data", "/", "high", "_", chunk_num, "_", rep, "_simdata.rds"))$true_occ %>%
+                                bind_rows(readRDS(paste0(path, "/emu_simulated_data", "/", "low", "_", chunk_num, "_", rep, "_simdata.rds"))$true_occ) %>%
+                                select(-site_id) %>%
+                                ungroup() %>%
+                                summarize(across(everything(), mean)) %>%
+                                mutate(rep = rep, chunk_num = chunk_num)
+                            }) %>%
+  mutate(true_perc_change = (t10-t1)/t1)
 
 perc_change_check <- nimble_output %>%
-  left_join(true_occ %>% mutate(rep = as.integer(rep))) %>%
+  left_join(true_occ_paired %>% select(chunk_num, true_perc_change, rep) %>%
+              mutate(across(c(chunk_num, rep), as.numeric))) %>%
   rowwise() %>%
-  mutate(ci_two_tail = between(true_perc_change, ci025, ci97.5) & !between(0,  ci025, ci97.5)) %>%
-  group_by(scenario_id) %>%
+  mutate(ci_two_tail = between(true_perc_change, ci025, ci97.5) & !between(0,  ci025, ci97.5),
+         bias = true_perc_change - mean) %>%
+  group_by(chunk_num) %>%
   summarize(ci_two_tail = sum(ci_two_tail)/n(),
+            bias = mean(bias),
             rep_count = n()) %>%
-  left_join(sim_map_hier %>% select(scenario_id, total_n, psi, phi, p) %>% distinct())# %>%
-  # group_by(psi, p, phi) %>%
-  # mutate(line_id = cur_group_id()) %>%
+  left_join(sim_df %>% select(chunk_num, total_n, psi, phi, p) %>% distinct())
 
 readr::write_csv(perc_change_check, here::here("data/nimble_power_check_hier.csv"))
 
+## RUN MISSING ONES ##
+# comp_chunk <- perc_change_check %>%
+#   filter(rep_count == 100) %>%
+#   pull(chunk_num)
+#
+# missing_chunks <- chunk_list[!chunk_list %in% comp_chunk]
 
-### If some runs are missing ###
-# the secenarios that ran did all their replicates
-perc_change_check %>% filter(rep_count != 100) %>% dim()
+# get the first sample size past the threshold
+post_df <- perc_change_check %>%
+  select(ci_two_tail, total_n, psi, phi, p) %>%
+  group_by(psi, phi, p) %>%
+  mutate(past_threshold = (ci_two_tail > 0.9)) %>%
+  filter(past_threshold == TRUE) %>%
+  filter(total_n == min(total_n)) %>%
+  rename(post = ci_two_tail, post_n = total_n) %>%
+  select(-past_threshold) %>%
+  ungroup()
 
-# which scenarios didn't run
-missing_sim_map <- sim_map_hier %>%
-  filter(!scenario_id %in% perc_change_check$scenario_id)
+# get the sample size before the threshold
+# and calculate threshold
+threshold_df <- perc_change_check %>%
+  select(ci_two_tail, total_n, psi, phi, p) %>%
+  rename(pre = ci_two_tail, pre_n = total_n) %>%
+  left_join(post_df) %>%
+  mutate(distance = post_n - pre_n) %>%
+  filter(distance > 0) %>%
+  group_by(psi, phi, p) %>%
+  filter(distance == min(distance)) %>%
+  select(-distance) %>%
+  mutate(slope = (post - pre)/(post_n - pre_n),
+         intercept = post - (slope*post_n),
+         threshold = (.9 - intercept)/slope)
 
-ncores <- 13
-cl <- makeCluster(ncores, type = "PSOCK")
-clusterExport(cl, c('init_model', 'missing_sim_map', 'sim_dataset', 'sample_data', 'path'))
-capture <- clusterEvalQ(cl, {
-  library(nimbleEcology)
-  library(magrittr)
-  library(purrr)
-  library(dplyr)
-})
-
-
-chunk_list <- sort(unique(missing_sim_map$scenario_id), decreasing = TRUE)
-results <- parLapply(cl, chunk_list, fit_model_reps_hier,
-                     reps = simn, n_year = 10, n_visit = 2,
-                     data = missing_sim_map)
-
+readr::write_csv(threshold_df, here::here("data/hier_power_thresholds.csv"))
