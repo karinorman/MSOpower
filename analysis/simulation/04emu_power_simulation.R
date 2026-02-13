@@ -147,19 +147,28 @@ pre_df <- perc_change_check %>%
   rename(pre = ci_two_tail, pre_n = total_n) %>%
   select(-distance)
 
+# get before and after crossing the power threshold
 post_df <- perc_change_check %>%
-  select(emu, ci_two_tail, total_n, psi, phi, p) %>%
-  mutate(distance = ci_two_tail - 0.90) %>%
+  select(emu, line_id, ci_two_tail, total_n, psi, phi, p) %>%
+  group_by(emu, psi, phi, p) %>%
+  mutate(past_threshold = (ci_two_tail > 0.9)) %>%
+  filter(past_threshold == TRUE) %>%
+  filter(total_n == min(total_n)) %>%
+  rename(post = ci_two_tail, post_n = total_n) %>%
+  select(-past_threshold) %>%
+  ungroup()
+
+# get data frame with pre and post power threshold points
+# calculate the exact threshold
+threshold_df <- perc_change_check %>%
+  select(emu, line_id, ci_two_tail, total_n, psi, phi, p) %>%
+  rename(pre = ci_two_tail, pre_n = total_n) %>%
+  left_join(post_df) %>%
+  mutate(distance = post_n - pre_n) %>%
   filter(distance > 0) %>%
   group_by(emu, psi, phi, p) %>%
   filter(distance == min(distance)) %>%
-  rename(post = ci_two_tail, post_n = total_n) %>%
   select(-distance) %>%
-  # for some scenarios more than one sample size has the same power, need to filter
-  group_by(emu, psi, phi, p) %>%
-  filter(post_n == min(post_n))
-
-threshold_df <- left_join(pre_df, post_df) %>%
   mutate(slope = (post - pre)/(post_n - pre_n),
          intercept = post - (slope*post_n),
          threshold = (.9 - intercept)/slope)
