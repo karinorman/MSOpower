@@ -314,34 +314,36 @@ ggsave(here::here("figures/SRM_trendgen_power.png"), power_crit_plt, width = 15,
 ######## comparison of thresholds  ########
 ###########################################
 
-threshold_df <- read.csv(here::here("data/srm_trendgen_power_thresholds.csv"))
+threshold_df <- read.csv(here::here("data/srm_trendgen_power_thresholds.csv")) %>%
+  select(-line_id) %>%
+  left_join(sim_scenarios_table %>% select(simulation_scenario, phi, p, psi = psi_high))
 
 bracket_ends <- threshold_df %>%
   mutate(threshold = round(threshold)) %>%
-  group_by(line_id) %>%
+  group_by(simulation_scenario) %>%
   mutate(difference = max(threshold) - min(threshold),
          type_rank = case_when(
            threshold == max(threshold) ~ "max",
            threshold == min(threshold) ~ "min"
          ),
-         xval = line_id + .25,
+         xval = simulation_scenario + .25,
          halfway = min(threshold) + (difference/2)) %>%
   filter(!is.na(type_rank)) %>%
   ungroup()
 
 bracket_df <- bracket_ends %>%
-  select(line_id, threshold, type_rank, xval, halfway, difference) %>%
+  select(simulation_scenario, threshold, type_rank, xval, halfway, difference) %>%
   pivot_wider(names_from = "type_rank", values_from = "threshold")
 
 threshold_plot <-
   threshold_df %>%
-  mutate(shape_var = paste0(type, "_", line_id)) %>%
+  mutate(shape_var = paste0(type, "_", simulation_scenario)) %>%
   ggplot() +
   geom_point(data = bracket_ends, aes(x = xval, y = threshold), shape = 95, size = 5) +
     geom_segment(data = bracket_df,
                  aes(x = xval, y = max, xend = xval, yend = min)) +
     geom_text(data = bracket_df, aes(x = (xval + .2), y = halfway, label = difference)) +
-  geom_point(aes(x = line_id, y = threshold, color = as.factor(line_id), shape = shape_var), size = 4) +
+  geom_point(aes(x = simulation_scenario, y = threshold, color = as.factor(simulation_scenario), shape = shape_var), size = 4) +
   scale_colour_discrete("", type = rep(c("#8A6240", "#87A96B", "#28587B", "#c9673a"), each = 2)) +
   scale_shape_manual("", values= rep(c(1, 19, 2, 17, 0, 15), 4)) +
   ylab("Threshold Sample Size") +
@@ -365,7 +367,7 @@ legend_plot <- threshold_df %>%
   )) %>%
   #mutate(shape_var = paste0(type, "_", line_id)) %>%
   ggplot() +
-  geom_point(aes(x = as.factor(line_id), y = threshold, shape = type_label), color = "grey", size = 3) +
+  geom_point(aes(x = as.factor(simulation_scenario), y = threshold, shape = type_label), color = "grey", size = 3) +
   theme_classic() +
   theme(legend.title = element_blank(),
         legend.text=element_text(size=12),
