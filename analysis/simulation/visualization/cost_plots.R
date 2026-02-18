@@ -19,7 +19,7 @@ thresholds.sample <- read.csv(here::here('data/thresholds.sample.costs.csv'))
 # plotting  #
 #############
 
-pal <- wes_palette("Zissou1",8,type='continuous')
+pal <- paletteer::paletteer_d("ggsci::default_uchicago")
 
 thresholds.sample$simulation_type <- factor(thresholds.sample$simulation_type,
                                             levels = c('hierarchical','BRE','BRW','CP','SRM','UGM'))
@@ -27,7 +27,9 @@ thresholds.sample$simulation_type <- factor(thresholds.sample$simulation_type,
 my_plot <- thresholds.sample %>%
   rowwise() %>%
   mutate(plotcost = meancost / 1000000) %>%
-  ggplot(aes(x=factor(ndeploy),y=plotcost,#,ymax=costmax,ymin=costmin,
+  mutate(n.obs.type = str_replace_all(n.obs.type,
+                                pattern = "(FS)", replacement = "GE")) %>%
+  ggplot(aes(x=factor(ndeploy),y=plotcost,ymax=costmax,ymin=costmin,
                      color=factor(simulation_scenario),shape=factor(n.obs.type)))+
   geom_jitter(size=1.5)+
   # labs(title="Optimal study design with respect to costs differs by number of deployments
@@ -55,15 +57,15 @@ my_plot <- thresholds.sample %>%
 
 ggsave(file=here::here("figures/cost_plot.jpg"), plot = my_plot, dpi=600, width=250, height=250, units='mm')
 
-pal <- paletteer::paletteer_d("ggsci::default_uchicago")
-
 cost_scen8_plot <- thresholds.sample %>%
   filter(simulation_scenario == 8) %>%
   rowwise() %>%
   mutate(plotcost = meancost / 1000000) %>%
   ungroup() %>%
-         mutate(simulation_type = factor(case_when(simulation_type == "hierarchical" ~ "Hierarchical", .default = simulation_type),
-                                         levels = c("BRE", "BRW", "CP", "SRM", "UGM", "Hierarchical"))) %>%
+  mutate(simulation_type = factor(case_when(simulation_type == "hierarchical" ~ "Full Range", .default = simulation_type),
+                                  levels = c("BRE", "BRW", "CP", "SRM", "UGM", "Full Range"))) %>%
+  mutate(n.obs.type = str_replace_all(n.obs.type,
+                                      pattern = "(FS)", replacement = "GE")) %>%
   ggplot(aes(x=ndeploy,y=plotcost,ymax=costmax/1000000,ymin=costmin/1000000,shape=factor(n.obs.type),col=factor(n.obs.type)))+
   geom_pointrange(size=0.3)+
   geom_line()+

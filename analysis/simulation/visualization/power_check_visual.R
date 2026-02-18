@@ -15,8 +15,8 @@ ci_plt <- ggplot(data.frame(x = x, y = y), aes(x, y)) +
   theme_classic() +
   scale_y_continuous(limits = c(0,6), expand=c(0,0)) +
   xlim(c(-0.63, 0.05)) +
-  xlab(element_blank()) +
-  ylab(element_blank()) +
+  xlab("Estimated Percent Change") +
+  ylab("Density") +
   geom_vline(xintercept = ci95$CI_low, color = "#87A96B", linetype = "dashed") +
   geom_vline(xintercept = ci95$CI_high, color = "#87A96B", linetype = "dashed") +
   geom_vline(xintercept = -0.06, color = "#d0b740", linetype = "dashed") +
