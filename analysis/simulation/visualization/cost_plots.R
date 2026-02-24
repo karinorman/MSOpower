@@ -14,9 +14,18 @@ source(here::here("R/logistics.sims.load.packages.R"))
 # upload data  #
 ################
 thresholds.sample <- read.csv(here::here('data/thresholds.sample.costs.v2.csv')) %>%
-  mutate(simulation_type = factor(ifelse(simulation_type == "hierarchical", "Range-wide", simulation_type),
-                                  levels = c('BRE','BRW','CP','SRM','UGM', 'Range-wide')),
-         ARUS = factor(paste(ARUS, "ARUs per hexagonal unit")))
+  mutate(simulation_type = case_when(
+    simulation_type == "BRE" ~ "Basin & Range - East",
+    simulation_type == "BRW" ~ "Basin & Range - West",
+    simulation_type == "CP" ~ "Colorado Plateau",
+    simulation_type == "SRM" ~ "Southern Rocky Mountains",
+    simulation_type == "UGM" ~ "Upper Gila Mountains",
+    simulation_type == "hierarchical" ~ "Range-wide"
+  ),
+  simulation_type = factor(simulation_type, levels = c("Basin & Range - East","Basin & Range - West","Colorado Plateau",
+                 "Southern Rocky Mountains","Upper Gila Mountains", 'Range-wide')),
+  ARUS = factor(paste(ARUS, "ARUs per hexagonal unit")))
+
 
 #############
 # plotting  #
@@ -55,31 +64,37 @@ my_plot <- thresholds.sample %>%
         strip.background =element_rect(fill="transparent"))
 
 
-ggsave(file=here::here("figures/cost_plot.jpg"), plot = my_plot, dpi=600, width=250, height=250, units='mm')
+ggsave(file=here::here("figures/cost_plot.jpg"), plot = my_plot, dpi=600, width=350, height=250, units='mm')
 
-cost_scen8_plot <- thresholds.sample %>%
+test_data <-  thresholds.sample %>%
   filter(simulation_scenario == 8) %>%
   rowwise() %>%
   mutate(plotcost = meancost / 1000000) %>%
   ungroup() %>%
   mutate(n.obs.type = str_replace_all(n.obs.type,
                                       pattern = "(FS)", replacement = "GE")) %>%
-  ggplot(aes(x=ndeploy,y=plotcost,ymax=costmax/1000000,ymin=costmin/1000000,shape=factor(n.obs.type),col=factor(n.obs.type)))+
-  geom_pointrange(size=0.3)+
-  geom_line()+
-  # labs(title="Optimal study design with respect to costs differs by number of deployments
-  #      and number and types of observers with simulation scenario 8")+
-  facet_grid(factor(ARUS)~simulation_type)+
+  group_by(simulation_type, n.obs.type, ARUS) %>%
+  mutate(opt_ind = ifelse(meancost == min(meancost), "Optimal Design", "Suboptimal Design"))
+
+cost_scen8_plot <- test_data %>%
+  #filter(ARUS == "2 ARUs per hexagonal unit", simulation_type == "Range-wide") %>%
+  mutate(n.obs.type = factor(n.obs.type), opt_ind = factor(opt_ind)) %>%
+  ggplot(aes(x=ndeploy)) +
+  #geom_pointrange(size=0.3)+
+  geom_line(aes(y=plotcost, color = n.obs.type, group = paste(n.obs.type, ARUS, simulation_type)))+
+  geom_point(aes(y=plotcost, color = n.obs.type, shape = opt_ind, size = opt_ind)) +
+  guides(color = guide_legend(override.aes = list(shape = NA))) +
+  facet_grid(factor(ARUS)~simulation_type) +
   scale_y_continuous(labels = function(y) format(y, scientific = FALSE))+
   scale_x_continuous(breaks = seq(1,3, by=1))+
-
-  #guides(color='none')+
+  guides(color = guide_legend(override.aes = list(shape = NA))) +
   scale_color_manual("", values=pal)+
-  scale_shape_manual("", values = c(16,17, 15, 8, 3, 17))+
+  scale_shape_manual("", values = c(8, 16))+
+  scale_size_manual("", values = c(2, 1)) +
   labs(x="Number of deployments", y="Cost (millions of USD)",
-       shape="Number and types of observers")+
+       color ="Number and types of observers")+
   theme_bw()+
-  theme(legend.position = 'bottom',
+  theme(#legend.position = 'bottom',
         axis.line = element_line(colour = "black"),
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
@@ -88,4 +103,4 @@ cost_scen8_plot <- thresholds.sample %>%
         strip.background =element_rect(fill="transparent"))
 
 
-ggsave(file=here::here("figures/cost_scen8.jpg"), plot = cost_scen8_plot, dpi=600,width=210,height=150,units='mm')
+ggsave(file=here::here("figures/cost_scen8.jpg"), plot = cost_scen8_plot, dpi=600,width=350,height=150,units='mm')
