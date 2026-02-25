@@ -1,0 +1,1 @@
+This repository includes all code and data needed to reproduce the analyses in the manuscript: "Robust and realistic power analysis for monitoring of occupancy trends: a case study with the Mexican Spotted Owl".
