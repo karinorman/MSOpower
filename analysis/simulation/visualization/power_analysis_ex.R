@@ -1,5 +1,8 @@
 library(dplyr)
 library(ggplot2)
+library(sf)
+library(terra)
+library(tidyterra)
 
 # Create example image of occupancy process and simulation
 
@@ -34,38 +37,48 @@ st_grid <- st_make_grid(box_buf, cellsize =  2150, square = FALSE) %>%
   filter(!ID %in% c(1:18, 115:126))#
 
 occ_fig <- ggplot() +
-  geom_spatvector(data = vect(st_grid), aes(fill = occupied)) +
+  geom_spatvector(data = vect(st_grid), aes(fill = occupied), linewidth = 1) +
   #geom_text(data = hex_cent, aes(label = ID, x = lon, y = lat)) +
   ggthemes::theme_map() +
-  scale_fill_manual(values = list("FALSE" = "transparent", "TRUE" = "#d88993")) +
+  scale_fill_manual(values = list("FALSE" = "transparent", "TRUE" = "#CCDAD5")) +
   scale_shape_manual(values = list("TRUE" = 16, "FALSE" = 1)) +
-  theme(legend.position = "none")
+  theme(legend.position = "none") +
+  theme(rect = element_rect(fill = "transparent"))
 
-ggsave(here::here("figures/occ_grid_example.jpg"), occ_fig, height = 10.5, width = 10.3)
+ggsave(here::here("figures/occ_grid_example.png"), occ_fig, height = 10.5, width = 10.3, bg = "transparent")
 
 # now add the sampling process on top
 occ_samp_fig <- ggplot() +
   geom_spatvector(data = vect(st_grid), aes(fill = occupied, linewidth = sampled)) +
   #geom_text(data = hex_cent, aes(label = ID, x = lon, y = lat)) +
   ggthemes::theme_map() +
-  scale_fill_manual(values = list("FALSE" = "transparent", "TRUE" = "#d88993")) +
-  scale_linewidth_manual(values = c(0.5,2)) +
-  theme(legend.position = "none")
+  scale_fill_manual(values = list("FALSE" = "transparent", "TRUE" = "#CCDAD5")) +
+  scale_linewidth_manual(values = c(1,3)) +
+  theme(legend.position = "none")+
+  theme(rect = element_rect(fill = "transparent"))
 
-ggsave(here::here("figures/occ_grid_samp_example.jpg"), occ_samp_fig, height = 10.5, width = 10.3)
+ggsave(here::here("figures/occ_grid_samp_example.png"), occ_samp_fig, height = 10.5, width = 10.3, bg = "transparent")
 
 ## Trend example
 ggplot() +
   # scale_x_continuous(expand=c(0,0)) +
   scale_y_continuous(breaks = c(0.25, 0.5, 0.75, 1)) +
   scale_x_continuous(breaks = c(2, 4, 6, 8, 10)) +
-  geom_segment(aes(x = 1, xend = 10, y = 1, yend = 0.75), color = "#28587B", size = 1) +
+  geom_segment(aes(x = 1, xend = 10, y = 1, yend = 0.75), color = "#4D806C", size = 1, fill = "transparent") +
   theme_classic() +
   ylab("Occupancy, \u03A8") +
   xlab("Year") +
-  ylim(c(0.7, 1))
+  ylim(c(0.7, 1))+
+  theme(
+    panel.background = element_rect(fill='transparent'), #transparent panel bg
+    plot.background = element_rect(fill='transparent', color=NA), #transparent plot bg
+    panel.grid.major = element_blank(), #remove major gridlines
+    panel.grid.minor = element_blank(), #remove minor gridlines
+    legend.background = element_rect(fill='transparent'), #transparent legend bg
+    legend.box.background = element_rect(fill='transparent') #transparent legend panel
+  )
 
-ggsave(here::here("figures/ex_25decline.jpg"), height = 2, width = 4)
+ggsave(here::here("figures/ex_25decline.png"), height = 2, width = 4, bg = "transparent")
 
 ## Power curve example
 

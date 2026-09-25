@@ -33,8 +33,8 @@ sim_scenarios_table <- data.frame(
   select(simulation_scenario,everything())
 
 ### Hierarchical Power ###
-hier_plot_df <- read.csv(here::here("data/nimble_power_check_hier.csv")) #%>%
-  #mutate(scenario_id = chunk_num)
+hier_plot_df <- read.csv(here::here("data/nimble_power_check_hier.csv")) %>%
+  mutate(scenario_id = chunk_num)
 
 hier_plot_df <- hier_plot_df %>%
   select(-scenario_id) %>%
@@ -65,6 +65,32 @@ hier_power_plt <- #purrr::pmap(ci_plotting_df, ~hier_plot_df %>%
 
 #ggsave(here::here("figures/hier_power_plot.jpeg"), hier_power_plt)
 
+hier_power_simp <- hier_plot_df %>%
+  arrange(psi) %>%
+  filter(phi == 0.6) %>%
+  mutate(sim_type = paste0(":  \u03A8 = ", psi, ", p = ", p)) %>%
+  ggplot(aes(x = total_n, y = ci_two_tail)) +
+  geom_line(aes(color = sim_type, linetype = sim_type), linewidth = 1.25) +
+  theme_classic() +
+  scale_colour_discrete("", type = rep(c("#87A96B", "#28587B", "#c9673a"), each = 2)) +
+  scale_linetype_manual("", values=c(2,1,2,1,2,1,2,1)) +
+  geom_hline(yintercept = 0.9, color = "darkgrey", linetype = "dashed", linewidth = 1) +
+  #geom_vline(xintercept = 2000, color = "darkgrey", linewidth = 1) +
+  theme(#legend.position = "none",
+        text=element_text(size=18),
+        axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
+        axis.title.x = element_text(margin = margin(t = 20, r = 0, b = 0, l = 0)),
+        panel.background = element_rect(fill='transparent', color = NA), #transparent panel bg
+        plot.background = element_rect(fill='transparent', color=NA), #transparent plot bg
+        panel.grid.major = element_blank(), #remove major gridlines
+        panel.grid.minor = element_blank(), #remove minor gridlines
+        legend.background = element_rect(fill='transparent'), #transparent legend bg
+        legend.box.background = element_rect(fill='transparent', color = NA)) +
+  ylab("Percent Success") +
+  xlab("Sample Size")
+#)
+
+ggsave(here::here("figures/hier_power_plot_simplified.png"), hier_power_simp, bg = "transparent", height = 8, width = 9)
 
 ### EMU Power ###
 
