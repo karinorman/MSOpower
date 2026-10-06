@@ -128,7 +128,12 @@ power_plt <- power_eval %>%
         legend.key.spacing.y = unit(0.3, 'cm'),
         panel.spacing = unit(30, "pt"),
         axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
-        axis.title.x = element_text(margin = margin(t = 20, r = 0, b = 0, l = 0))
+        axis.title.x = element_text(margin = margin(t = 20, r = 0, b = 0, l = 0)),
+        panel.background = element_rect(fill='transparent', color = NA), #transparent panel bg
+        plot.background = element_rect(fill='transparent', color=NA), #transparent plot bg
+        legend.background = element_rect(fill='transparent'), #transparent legend bg
+        legend.box.background = element_rect(fill='transparent', color = NA,),
+        strip.background =element_rect(fill="transparent")
   ) +
   guides(linetype = guide_legend(override.aes = list(linewidth = 1))# byrow = TRUE),
          #color = guide_legend(byrow = TRUE)
@@ -136,14 +141,14 @@ power_plt <- power_eval %>%
   ylab("Percent Success") +
   xlab("Sample Size")
 
-#ggsave(here::here("figures/power_plot.jpeg"), power_plt)
+ggsave(here::here("figures/power_plot.png"), power_plt, bg = "transparent")
 
 power_join <- power_plt + plot_spacer() +
   (plot_spacer() + hier_power_plt + plot_spacer() + plot_layout(ncol = 1, heights = c(0.5,2,0.5))) +
   plot_layout(nrow = 1, widths = c(2, 0.15, 1)) +
   plot_annotation(tag_levels = "A")
 
-ggsave(here::here("figures/power_plot_join.jpeg"), power_join, width = 18, height = 9)
+ggsave(here::here("figures/power_plot_join.jpeg"), power_join, width = 18, height = 9, bg = "white")
 
 # # get plots for different kinds of power checks
 # ggsave(here::here("figures/power_check_twotail.png"), power_plt[[1]], width = 16.5, height = 9.87)

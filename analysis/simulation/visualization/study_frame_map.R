@@ -13,7 +13,7 @@ emus <- st_read(here::here("data/MSO_EMUs/MSO_EMUs.shp")) %>%
 
 # if we have to read in again, names are messed up
 grid_attr_habitat <- vect(here::here("data/grid_attr_habitat.shp"))
-names(grid_attr_habitat)[23:29] <- c("sample_frame_veg", "sample_frame_type",  "habitat_2000", "habitat_2022", "mso_habitat_type", "mso_percent_habitat")
+names(grid_attr_habitat)[23:28] <- c("habitat_2000", "habitat_2022", "mso_habitat_type", "mso_percent_habitat", "sample_frame_veg", "sample_frame_type")
 
 grid_sample_frame <- vect(here::here("data/grid_sample_frame.shp"))
 names(grid_sample_frame) <- c("ID", "UNIT", "veg_type_landfire", "habitat_2000", "habitat_2022", "mso_habitat_type", "mso_percent_habitat", "include_patch")
@@ -78,7 +78,11 @@ base_map <- ggplot() +
   theme(legend.position = "inside",
         legend.position.inside = c(1.15, .35),
         legend.title = element_blank(),
-        plot.margin = margin(2, 8, .5, 0.5, "cm")) +
+        plot.margin = margin(2, 8, .5, 0.5, "cm"),
+        panel.background = element_rect(fill='transparent', color = NA), #transparent panel bg
+        plot.background = element_rect(fill='transparent', color=NA), #transparent plot bg
+        legend.background = element_rect(fill='transparent', color = "transparent"), #transparent legend bg
+        legend.box.background = element_rect(fill='transparent', color = "transparent")) +
   annotate("label", x = -112.5, y = 42, label = "Colorado \nPlateau") +
   annotate("label", x = -106, y = 42, label = "Southern Rocky \nMountains") +
   annotate("label", x = -112.5, y = 30.5, label = "Basin and \nRange West") +
@@ -86,14 +90,18 @@ base_map <- ggplot() +
   annotate("label", x = -108, y = 30.5, label = "Upper Gila \nMountains") +
   annotate("label", x = -103, y = 35, label = "Basin and \nRange East")
 
-ggsave(here::here("figures/emu_basemap.jpg"), base_map)
+ggsave(here::here("figures/emu_basemap.jpg"), base_map, bg = "white")
 
 inset_map <- ggplot() +
   geom_spatvector(data = emus %>% st_crop(crop_box), color = "white", fill = "lightgrey", alpha = 0.5, linewidth = .8) +
   geom_spatvector(data = grid_veg_samp %>% crop(crop_box), aes(fill = plot_lc), color = "white") +
   scale_fill_manual(values = pal) +
   theme_void()+
-  theme(legend.position = "none") +
+  theme(legend.position = "none",
+        panel.background = element_rect(fill='transparent', color = NA), #transparent panel bg
+        plot.background = element_rect(fill='transparent', color=NA), #transparent plot bg
+        legend.background = element_rect(fill='transparent'), #transparent legend bg
+        legend.box.background = element_rect(fill='transparent', color = NA)) +
   geom_spatvector(data = vect(st_as_sfc(crop_box)), color = "black", fill = "transparent", linewidth = 0.5)
 
 study_map <- ggdraw(base_map) +
@@ -106,4 +114,4 @@ study_map <- ggdraw(base_map) +
   )
 
 ggsave(here::here("figures/sample_frame_map.jpeg"), study_map, width = 210, height = 180, units = "mm")
-
+ggsave(here::here("figures/sample_frame_map.png"), study_map, width = 210, height = 180, units = "mm", bg = "transparent")

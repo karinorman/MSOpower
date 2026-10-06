@@ -66,6 +66,10 @@ nimble_srm_plt <- srm_power_check %>%
         panel.spacing = unit(30, "pt"),
         axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
         axis.title.x = element_text(margin = margin(t = 20, r = 0, b = 0, l = 0)),
+        panel.background = element_rect(fill='transparent', color = NA), #transparent panel bg
+        plot.background = element_rect(fill='transparent', color=NA), #transparent plot bg
+        legend.background = element_rect(fill='transparent'), #transparent legend bg
+        legend.box.background = element_rect(fill='transparent', color = NA),
         strip.background = element_blank(),
         strip.text = element_text(size = 13)
   ) +
@@ -263,6 +267,121 @@ occ_trend_plot <- high_occ_plot + plot_spacer() + plot_spacer() +
 
 ggsave(here::here("figures/occ_trend_plot_srm.jpg"), occ_trend_plot, width = 8, height = 11)
 
+
+### Get a stand alone for examples ###
+equil_ex <-
+  trend_gen_df %>%
+  filter(psi == 0.6, type == "equilibrium") %>%
+  mutate(sim_type_name = paste0(type, ", ", "\u03C6 = ", phi)) %>%
+  ggplot(aes(x = time, y = mean_occ, linetype = sim_type_name)) +
+  #geom_ribbon(aes(group = type, ymin = lower, ymax = upper, fill = type), alpha = 0.3) +
+  geom_line(linewidth = 0.75, color = "#EC9A29") +
+  theme_classic() +
+  #facet_wrap(~sd_phi, nrow = 1) +
+  ylim(c(0.4, 0.65)) +
+  ylab("Occupancy, \u03A8") +
+  #scale_colour_manual("", values = rep(pal, each = 2)) +
+  scale_linetype_manual("", values=c(2,1,2,1,2,1)) +
+  geom_segment(aes(x = -0.5, xend = 10.25, y = 0.45, yend = 0.45), linetype = "dashed", color = "grey") +
+  geom_segment(aes(x = -0.5, xend = 10.25, y = 0.6, yend = 0.6), linetype = "dashed", color = "grey") +
+  annotate("text", x = I(1), y = 0.45, hjust = 0, label = deparse(bquote("0.75\u03A8" [i])),
+           color = "darkgrey", parse = TRUE, size = 5) +
+  annotate("text", x = I(1), y = 0.6, hjust = 0, label = deparse(bquote("\u03A8" [i])),
+           color = "darkgrey", parse = TRUE, size = 5) +
+  scale_x_continuous(breaks = c(2, 4, 6, 8, 10)) +
+  coord_cartesian(xlim = c(0, 10), clip = 'off') +
+  theme(
+    # axis.line.x=element_blank(),
+    #     axis.text.x=element_blank(),
+    #     axis.ticks.x=element_blank(),
+    #     axis.title.x=element_blank(),
+    panel.background = element_rect(fill='transparent', color = NA), #transparent panel bg
+    plot.background = element_rect(fill='transparent', color=NA),
+        text = element_text(size=16),
+        axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
+        legend.key.size = unit(1,"cm"),
+        legend.key = element_blank(),
+        legend.background = element_blank(),
+        # plot.margin = margin(1,6,1,1, "cm"),
+        legend.position = "none",
+        plot.margin = margin(1,2.5,1,1, "cm")
+  )
+
+ggsave(here::here("figures/equilibrium_trend_ex.png"), equil_ex, bg = "transparent", width = 8, height = 6)
+
+equil_surviv_ex <- trend_gen_df %>%
+  filter(psi == 0.6, type %in% c("equilibrium", "constant survival")) %>%
+  mutate(sim_type_name = paste0(type, ", ", "\u03C6 = ", phi)) %>%
+  ggplot(aes(x = time, y = mean_occ, linetype = sim_type_name, color = sim_type_name)) +
+  #geom_ribbon(aes(group = type, ymin = lower, ymax = upper, fill = type), alpha = 0.3) +
+  geom_line(linewidth = 0.75) +
+  theme_classic() +
+  #facet_wrap(~sd_phi, nrow = 1) +
+  ylim(c(0.4, 0.65)) +
+  ylab("Occupancy, \u03A8") +
+  scale_colour_manual("", values = rep(pal, each = 2)) +
+  scale_linetype_manual("", values=c(2,1,2,1,2,1)) +
+  geom_segment(aes(x = -0.5, xend = 10.25, y = 0.45, yend = 0.45), linetype = "dashed", color = "grey") +
+  geom_segment(aes(x = -0.5, xend = 10.25, y = 0.6, yend = 0.6), linetype = "dashed", color = "grey") +
+  annotate("text", x = I(1), y = 0.45, hjust = 0, label = deparse(bquote("0.75\u03A8" [i])),
+           color = "darkgrey", parse = TRUE, size = 5) +
+  annotate("text", x = I(1), y = 0.6, hjust = 0, label = deparse(bquote("\u03A8" [i])),
+           color = "darkgrey", parse = TRUE, size = 5) +
+  scale_x_continuous(breaks = c(2, 4, 6, 8, 10)) +
+  coord_cartesian(xlim = c(0, 10), clip = 'off') +
+  theme(
+    # axis.line.x=element_blank(),
+    #     axis.text.x=element_blank(),
+    #     axis.ticks.x=element_blank(),
+    #     axis.title.x=element_blank(),
+    panel.background = element_rect(fill='transparent', color = NA), #transparent panel bg
+    plot.background = element_rect(fill='transparent', color=NA),
+        text = element_text(size=16),
+        axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
+        legend.position = "none",
+        plot.margin = margin(1,2.5,1,1, "cm")
+  ) +
+  guides(linetype = guide_legend(override.aes = list(linesize = 1)))
+
+ggsave(here::here("figures/equil_surviv_trend_ex.png"), equil_surviv_ex, bg = "transparent", width = 8, height = 6)
+
+all_trends_example <- trend_gen_df %>%
+  filter(psi == 0.6) %>%
+  mutate(sim_type_name = paste0(type, ", ", "\u03C6 = ", phi)) %>%
+  ggplot(aes(x = time, y = mean_occ, linetype = sim_type_name, color = sim_type_name)) +
+  #geom_ribbon(aes(group = type, ymin = lower, ymax = upper, fill = type), alpha = 0.3) +
+  geom_line(linewidth = 0.75) +
+  theme_classic() +
+  #facet_wrap(~sd_phi, nrow = 1) +
+  ylim(c(0.4, 0.65)) +
+  ylab("Occupancy, \u03A8") +
+  scale_colour_manual("", values = rep(pal, each = 2)) +
+  scale_linetype_manual("", values=c(2,1,2,1,2,1)) +
+  geom_segment(aes(x = -0.5, xend = 10.25, y = 0.45, yend = 0.45), linetype = "dashed", color = "grey") +
+  geom_segment(aes(x = -0.5, xend = 10.25, y = 0.6, yend = 0.6), linetype = "dashed", color = "grey") +
+  annotate("text", x = I(1), y = 0.45, hjust = 0, label = deparse(bquote("0.75\u03A8" [i])),
+           color = "darkgrey", parse = TRUE, size = 5) +
+  annotate("text", x = I(1), y = 0.6, hjust = 0, label = deparse(bquote("\u03A8" [i])),
+           color = "darkgrey", parse = TRUE, size = 5) +
+  scale_x_continuous(breaks = c(2, 4, 6, 8, 10)) +
+  coord_cartesian(xlim = c(0, 10), clip = 'off') +
+  theme(
+    # axis.line.x=element_blank(),
+    #     axis.text.x=element_blank(),
+    #     axis.ticks.x=element_blank(),
+    #     axis.title.x=element_blank(),
+    panel.background = element_rect(fill='transparent', color = NA), #transparent panel bg
+    plot.background = element_rect(fill='transparent', color=NA),
+    text = element_text(size=16),
+    axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
+    legend.position = "none",
+    plot.margin = margin(1,2.5,1,1, "cm")
+  ) +
+  guides(linetype = guide_legend(override.aes = list(linesize = 1)))
+
+
+ggsave(here::here("figures/all_trends_example_ex.png"), all_trends_example, bg = "transparent", width = 8, height = 6)
+
 ###########################################
 ####### comparison of power checks  #######
 ###########################################
@@ -350,6 +469,10 @@ threshold_plot <-
   xlab("Scenario") +
   theme_classic() +
   theme(legend.position = "none",
+        panel.background = element_rect(fill='transparent', color = NA), #transparent panel bg
+        plot.background = element_rect(fill='transparent', color=NA), #transparent plot bg
+        legend.background = element_rect(fill='transparent'), #transparent legend bg
+        legend.box.background = element_rect(fill='transparent', color = NA),
         legend.text=element_text(size=12),
         legend.key.width = unit(1,"cm"),
         text=element_text(size=14),
@@ -376,7 +499,11 @@ legend_plot <- threshold_df %>%
         legend.key.spacing.y = unit(0.5, 'cm'),
         #panel.spacing = unit(30, "pt"),
         axis.title.y = element_text(margin = margin(t = 0, r = 20, b = 0, l = 0)),
-        axis.title.x = element_text(margin = margin(t = 20, r = 0, b = 0, l = 0)))
+        axis.title.x = element_text(margin = margin(t = 20, r = 0, b = 0, l = 0)),
+        panel.background = element_rect(fill='transparent', color = NA), #transparent panel bg
+        plot.background = element_rect(fill='transparent', color=NA), #transparent plot bg
+        legend.background = element_rect(fill='transparent'), #transparent legend bg
+        legend.box.background = element_rect(fill='transparent', color = NA),)
 
 legend <- get_legend(legend_plot)
 
@@ -384,7 +511,7 @@ bottom_row <- plot_grid(threshold_plot, legend, nrow = 1, rel_widths = c(1, .2))
 
 trend_eval_plt <- plot_grid(nimble_srm_plt, bottom_row, nrow = 2, labels = "AUTO")
 
-save_plot(here::here("figures/trend_eval.png"), trend_eval_plt, nrow = 2, ncol = 2, bg = 'white', base_asp = 1.5, base_height = 5)
+save_plot(here::here("figures/trend_eval.png"), trend_eval_plt, nrow = 2, ncol = 2, bg = 'transparent', base_asp = 1.5, base_height = 5)
 
 
 # # Power check figure for single trend generation option for all EMU's
